@@ -1,0 +1,63 @@
+@inherits ComponentBase
+
+<MudPaper Class="pa-3" Elevation="1">
+    <MudText Typo="Typo.h6">Settings</MudText>
+    <MudText Typo="Typo.caption" Class="mb-2">Edit Time to Live and message expiry options for the selected entity.</MudText>
+
+    @if (!IsSelectionValid)
+    {
+        <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">Select a queue, topic, or subscription from the tree to edit settings.</MudAlert>
+    }
+    else
+    {
+        @if (SettingsLoading)
+        {
+            <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+        }
+        <MudGrid Class="mt-2">
+            <MudItem xs="12" md="6">
+                <MudTextField T="string" Label="Entity" Value="@SelectedFriendly" ReadOnly="true" />
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudTextField T="string" @bind-Value="TtlText" Label="Default Message TTL (d.hh:mm:ss)" Placeholder="1.00:00:00" Immediate="true" />
+                <MudText Typo="Typo.caption">Use d.hh:mm:ss (supports days), e.g., 1.00:00:00 for 1 day. Full TimeSpan format also accepted.</MudText>
+            </MudItem>
+            @if (ShowDeadLetterOnExpiration)
+            {
+                <MudItem xs="12" md="6">
+                    <MudSwitch T="bool" @bind-Value="DeadLetterOnExpiration">Dead-letter on message expiration</MudSwitch>
+                </MudItem>
+            }
+        </MudGrid>
+
+        <div class="mt-3">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!CanSave)" OnClick="@OnSave">Save</MudButton>
+            <MudButton Class="ml-2" Variant="Variant.Outlined" Disabled="@(SettingsLoading || SettingsSaving)" OnClick="@OnReset">Reset</MudButton>
+        </div>
+    }
+</MudPaper>
+
+@code {
+    [Parameter] public bool IsSelectionValid { get; set; }
+    [Parameter] public string SelectedFriendly { get; set; } = string.Empty;
+
+    [Parameter] public string TtlText { get; set; } = string.Empty;
+    [Parameter] public EventCallback<string> TtlTextChanged { get; set; }
+
+    [Parameter] public bool DeadLetterOnExpiration { get; set; }
+    [Parameter] public EventCallback<bool> DeadLetterOnExpirationChanged { get; set; }
+
+    [Parameter] public bool ShowDeadLetterOnExpiration { get; set; }
+
+    [Parameter] public bool SettingsLoading { get; set; }
+    [Parameter] public bool SettingsSaving { get; set; }
+    [Parameter] public bool CanSave { get; set; }
+
+    [Parameter] public EventCallback OnSave { get; set; }
+    [Parameter] public EventCallback OnReset { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        // ensure two-way binding works via parameters
+    }
+}
