@@ -39,20 +39,7 @@
         </MudItem>
 
         <MudItem xs="12" md="9">
-            <MudPaper Class="pa-3 mb-2" Elevation="1">
-                <MudStack Spacing="0">
-                    Tags: 
-                    @if (Connection?.Tags is not null && Connection.Tags.Count > 0)
-                    {
-                        <div class="mt-1">
-                            @foreach (var t in Connection.Tags)
-                            {
-                                <MudChip T="string" Variant="Variant.Outlined" Size="Size.Small" Class="mr-1 mb-1">@t</MudChip>
-                            }
-                        </div>
-                    }
-                </MudStack>
-            </MudPaper>
+            
 
             <EntitiesActionBar
                 HasConnection="@HasConnection"
@@ -254,17 +241,6 @@
         if (!HasConnection || !SelectedIsSubscription || string.IsNullOrWhiteSpace(_connectionString)) return;
         if (!TryGetSubscription(out var topicName, out var subName)) return;
 
-        if (IsProdConnection())
-        {
-            var extra = await DialogService.ShowMessageBox(
-                title: "Production Guardrail",
-                markupMessage: (MarkupString)$"This connection is tagged '<b>prod</b>'. Deleting '<b>{topicName}/{subName}</b>' may impact production. Continue?",
-                yesText: "Continue",
-                cancelText: "Cancel",
-                options: new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small });
-            if (extra != true) return;
-        }
-
         var confirm = await DialogService.ShowMessageBox(
             title: "Delete Subscription",
             markupMessage: (MarkupString)$"This will permanently delete subscription '<b>{topicName}/{subName}</b>' including its rules. Continue?",
@@ -301,16 +277,6 @@
     private async Task ConfirmPurgeSubscription(string topicName, string subscriptionName)
     {
         if (string.IsNullOrWhiteSpace(_connectionString)) return;
-        if (IsProdConnection())
-        {
-            var extra = await DialogService.ShowMessageBox(
-                title: "Production Guardrail",
-                markupMessage: (MarkupString)$"This connection is tagged '<b>prod</b>'. Purging '<b>{topicName}/{subscriptionName}</b>' may impact production. Continue?",
-                yesText: "Continue",
-                cancelText: "Cancel",
-                options: new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small });
-            if (extra != true) return;
-        }
         var confirm = await DialogService.ShowMessageBox(
             title: "Purge Active Messages",
             markupMessage: (MarkupString)$"This will delete active messages from subscription '<b>{topicName}/{subscriptionName}</b>' (up to the configured batch). Continue?",
@@ -333,16 +299,6 @@
     private async Task ConfirmPurgeSubscriptionDlq(string topicName, string subscriptionName)
     {
         if (string.IsNullOrWhiteSpace(_connectionString)) return;
-        if (IsProdConnection())
-        {
-            var extra = await DialogService.ShowMessageBox(
-                title: "Production Guardrail",
-                markupMessage: (MarkupString)$"This connection is tagged '<b>prod</b>'. Purging DLQ for '<b>{topicName}/{subscriptionName}</b>' may impact production. Continue?",
-                yesText: "Continue",
-                cancelText: "Cancel",
-                options: new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small });
-            if (extra != true) return;
-        }
         var confirm = await DialogService.ShowMessageBox(
             title: "Purge DLQ Messages",
             markupMessage: (MarkupString)$"This will delete messages from the Dead-letter subqueue of '<b>{topicName}/{subscriptionName}</b>' (up to the configured batch). Continue?",
@@ -625,26 +581,9 @@
         }
     }
 
-    private bool IsProdConnection()
-    {
-        var tags = Connection?.Tags;
-        if (tags is null || tags.Count == 0) return false;
-        return tags.Any(t => string.Equals(t, "prod", StringComparison.OrdinalIgnoreCase) || string.Equals(t, "env:prod", StringComparison.OrdinalIgnoreCase));
-    }
-
     private async Task ConfirmPurgeQueue(string queueName)
     {
         if (string.IsNullOrWhiteSpace(_connectionString)) return;
-        if (IsProdConnection())
-        {
-            var extra = await DialogService.ShowMessageBox(
-                title: "Production Guardrail",
-                markupMessage: (MarkupString)$"This connection is tagged '<b>prod</b>'. Purging '<b>{queueName}</b>' may impact production. Continue?",
-                yesText: "Continue",
-                cancelText: "Cancel",
-                options: new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small });
-            if (extra != true) return;
-        }
         var confirm = await DialogService.ShowMessageBox(
             title: "Purge Active Messages",
             markupMessage: (MarkupString)$"This will delete active messages from queue '<b>{queueName}</b>' (up to the configured batch). Continue?",
@@ -667,16 +606,6 @@
     private async Task ConfirmPurgeQueueDlq(string queueName)
     {
         if (string.IsNullOrWhiteSpace(_connectionString)) return;
-        if (IsProdConnection())
-        {
-            var extra = await DialogService.ShowMessageBox(
-                title: "Production Guardrail",
-                markupMessage: (MarkupString)$"This connection is tagged '<b>prod</b>'. Purging DLQ for '<b>{queueName}</b>' may impact production. Continue?",
-                yesText: "Continue",
-                cancelText: "Cancel",
-                options: new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small });
-            if (extra != true) return;
-        }
         var confirm = await DialogService.ShowMessageBox(
             title: "Purge DLQ Messages",
             markupMessage: (MarkupString)$"This will delete messages from the Dead-letter subqueue of '<b>{queueName}</b>' (up to the configured batch). Continue?",
@@ -699,16 +628,6 @@
     private async Task ConfirmReplayQueueDlq(string queueName)
     {
         if (string.IsNullOrWhiteSpace(_connectionString)) return;
-        if (IsProdConnection())
-        {
-            var extra = await DialogService.ShowMessageBox(
-                title: "Production Guardrail",
-                markupMessage: (MarkupString)$"This connection is tagged '<b>prod</b>'. Replaying DLQ for '<b>{queueName}</b>' may impact production. Continue?",
-                yesText: "Continue",
-                cancelText: "Cancel",
-                options: new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small });
-            if (extra != true) return;
-        }
         var confirm = await DialogService.ShowMessageBox(
             title: "Replay DLQ Messages",
             markupMessage: (MarkupString)$"This will resend messages from the DLQ of '<b>{queueName}</b>' back to the active queue and complete them. Continue?",
@@ -1204,16 +1123,6 @@
     {
         if (!SelectedIsQueue || string.IsNullOrWhiteSpace(_connectionString)) return;
         var name = _selectedTreeValue!["queue:".Length..];
-        if (IsProdConnection())
-        {
-            var extra = await DialogService.ShowMessageBox(
-                title: "Production Guardrail",
-                markupMessage: (MarkupString)$"This connection is tagged '<b>prod</b>'. Deleting queue '<b>{name}</b>' may impact production. Continue?",
-                yesText: "Continue",
-                cancelText: "Cancel",
-                options: new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small });
-            if (extra != true) return;
-        }
         var confirm = await DialogService.ShowMessageBox(
             title: "Delete Queue",
             markupMessage: (MarkupString)$"This will permanently delete queue '<b>{name}</b>'. Continue?",
@@ -1238,16 +1147,6 @@
     {
         if (!SelectedIsTopic || string.IsNullOrWhiteSpace(_connectionString)) return;
         var name = _selectedTreeValue!["topic:".Length..];
-        if (IsProdConnection())
-        {
-            var extra = await DialogService.ShowMessageBox(
-                title: "Production Guardrail",
-                markupMessage: (MarkupString)$"This connection is tagged '<b>prod</b>'. Deleting topic '<b>{name}</b>' may impact production. Continue?",
-                yesText: "Continue",
-                cancelText: "Cancel",
-                options: new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small });
-            if (extra != true) return;
-        }
         var confirm = await DialogService.ShowMessageBox(
             title: "Delete Topic",
             markupMessage: (MarkupString)$"This will permanently delete topic '<b>{name}</b>' and all its subscriptions. Continue?",

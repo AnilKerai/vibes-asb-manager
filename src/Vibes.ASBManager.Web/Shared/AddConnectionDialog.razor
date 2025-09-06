@@ -13,13 +13,6 @@
                           OnAdornmentClick="@ToggleShowConn"
                           tabindex="1" />
             <MudTextField Label="Name" Placeholder="e.g. mynamespace" HelperText="Defaults to namespace from connection string" @bind-Value="_name" @bind-Value:after="OnNameAfter" tabindex="2" />
-            <MudTextField Label="Add Tag" Placeholder="env:prod, svc:orders" HelperText="Press Enter or , to add" @bind-Value="_tagInput" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Add" OnAdornmentClick="AddTag" OnKeyDown="OnTagKeyDown" Immediate="true" tabindex="3" />
-            <div class="mt-2">
-                @foreach (var t in _newTags)
-                {
-                    <MudChip T="string" Class="mr-1 mb-1" Color="Color.Primary" Variant="Variant.Filled" OnClose="() => RemoveTag(t)">@t</MudChip>
-                }
-            </div>
         </MudForm>
         @if (OperatingSystem.IsMacCatalyst())
         {
@@ -43,8 +36,6 @@
     private string _connString = string.Empty;
     private string _name = string.Empty;
     private bool _nameTouched = false;
-    private string _tagInput = string.Empty;
-    private List<string> _newTags = new();
     private bool _showConn = false;
 
     private async Task OnSave()
@@ -59,7 +50,6 @@
         {
             Name = GetFinalName(),
             ConnectionString = _connString.Trim(),
-            Tags = _newTags.ToList()
         };
         MudDialog?.Close(DialogResult.Ok(req));
     }
@@ -83,29 +73,7 @@
         return Task.CompletedTask;
     }
 
-    private void AddTag()
-    {
-        if (string.IsNullOrWhiteSpace(_tagInput)) return;
-        var raw = _tagInput.Trim();
-        if (raw.EndsWith(",")) raw = raw.TrimEnd(',').TrimEnd();
-        if (string.IsNullOrWhiteSpace(raw)) { _tagInput = string.Empty; return; }
-        var t = raw.ToLowerInvariant();
-        if (!_newTags.Contains(t)) _newTags.Add(t);
-        _tagInput = string.Empty;
-    }
-
-    private void RemoveTag(string t)
-    {
-        _newTags.Remove(t);
-    }
-
-    private void OnTagKeyDown(KeyboardEventArgs e)
-    {
-        var key = e?.Key;
-        var code = e?.Code;
-        if (string.Equals(key, "Enter", StringComparison.Ordinal) || string.Equals(key, ",", StringComparison.Ordinal) || string.Equals(code, "Comma", StringComparison.Ordinal))
-            AddTag();
-    }
+    
 
     private string GetFinalName()
     {

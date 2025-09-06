@@ -1,5 +1,3 @@
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using Dapper;
 using Npgsql;
 using Vibes.ASBManager.Application.Interfaces;
@@ -11,14 +9,6 @@ public sealed class SqlConnectionStore(string connectionString) : IConnectionSto
 {
     private readonly string _connectionString = connectionString ?? throw new ArgumentNullException(nameof(connectionString));
 
-    private static readonly JsonSerializerOptions JsonOpts = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        PropertyNameCaseInsensitive = true,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        WriteIndented = false
-    };
-
     public async Task<IReadOnlyList<ConnectionInfo>> GetAllAsync(CancellationToken ct = default)
     {
         await EnsureSchemaAsync(ct).ConfigureAwait(false);
@@ -26,7 +16,6 @@ public sealed class SqlConnectionStore(string connectionString) : IConnectionSto
                 id as Id,
                 name as Name,
                 connection_string as ConnectionString,
-                tags_json as TagsJson,
                 created_utc as CreatedUtc,
                 last_used_utc as LastUsedUtc,
                 pinned as Pinned
@@ -42,7 +31,6 @@ public sealed class SqlConnectionStore(string connectionString) : IConnectionSto
                 Id = r.Id,
                 Name = r.Name,
                 ConnectionString = r.ConnectionString,
-                Tags = ParseTags(r.TagsJson),
                 CreatedUtc = r.CreatedUtc,
                 LastUsedUtc = r.LastUsedUtc,
                 Pinned = r.Pinned
@@ -59,7 +47,6 @@ public sealed class SqlConnectionStore(string connectionString) : IConnectionSto
                 id as Id,
                 name as Name,
                 connection_string as ConnectionString,
-                tags_json as TagsJson,
                 created_utc as CreatedUtc,
                 last_used_utc as LastUsedUtc,
                 pinned as Pinned
@@ -73,7 +60,6 @@ public sealed class SqlConnectionStore(string connectionString) : IConnectionSto
             Id = row.Id,
             Name = row.Name,
             ConnectionString = row.ConnectionString,
-            Tags = ParseTags(row.TagsJson),
             CreatedUtc = row.CreatedUtc,
             LastUsedUtc = row.LastUsedUtc,
             Pinned = row.Pinned
@@ -83,19 +69,16 @@ public sealed class SqlConnectionStore(string connectionString) : IConnectionSto
     public async Task SaveAsync(ConnectionInfo connection, CancellationToken ct = default)
     {
         if (connection is null) throw new ArgumentNullException(nameof(connection));
-        connection.NormalizeTags();
         await EnsureSchemaAsync(ct).ConfigureAwait(false);
-        var tagsJson = SerializeTags(connection.Tags);
         var now = DateTimeOffset.UtcNow;
         // Preserve CreatedUtc if caller didn't set; fall back to now
         var created = connection.CreatedUtc == default ? now : connection.CreatedUtc;
 
-        const string upsert = @"insert into connections (id, name, connection_string, tags_json, created_utc, last_used_utc, pinned)
-values (@Id, @Name, @ConnectionString, @TagsJson, @CreatedUtc, @LastUsedUtc, @Pinned)
+        const string upsert = @"insert into connections (id, name, connection_string, created_utc, last_used_utc, pinned)
+values (@Id, @Name, @ConnectionString, @CreatedUtc, @LastUsedUtc, @Pinned)
 on conflict (id) do update set
     name = excluded.name,
     connection_string = excluded.connection_string,
-    tags_json = excluded.tags_json,
     -- preserve original created_utc when updating
     created_utc = connections.created_utc,
     last_used_utc = excluded.last_used_utc,
@@ -106,7 +89,6 @@ on conflict (id) do update set
             Id = connection.Id,
             Name = connection.Name,
             ConnectionString = connection.ConnectionString,
-            TagsJson = tagsJson,
             CreatedUtc = created,
             LastUsedUtc = connection.LastUsedUtc,
             Pinned = connection.Pinned
@@ -125,37 +107,12 @@ on conflict (id) do update set
         await conn.ExecuteAsync(new CommandDefinition(sql, new { id }, cancellationToken: ct));
     }
 
-    private static List<string> ParseTags(string? json)
-    {
-        if (string.IsNullOrWhiteSpace(json)) return new List<string>();
-        try
-        {
-            var list = JsonSerializer.Deserialize<List<string>>(json, JsonOpts) ?? new List<string>();
-            return list.Where(s => !string.IsNullOrWhiteSpace(s))
-                       .Select(s => s.Trim().ToLowerInvariant())
-                       .Distinct()
-                       .OrderBy(s => s)
-                       .ToList();
-        }
-        catch
-        {
-            return new List<string>();
-        }
-    }
-
-    private static string SerializeTags(List<string>? tags)
-    {
-        tags ??= new List<string>();
-        return JsonSerializer.Serialize(tags, JsonOpts);
-    }
-
     private async Task EnsureSchemaAsync(CancellationToken ct)
     {
         const string createTable = @"create table if not exists connections (
             id text primary key,
             name text not null,
             connection_string text null,
-            tags_json text null,
             created_utc timestamptz not null,
             last_used_utc timestamptz null,
             pinned boolean not null default false
@@ -172,7 +129,6 @@ on conflict (id) do update set
         public string Id { get; init; } = string.Empty;
         public string Name { get; init; } = string.Empty;
         public string? ConnectionString { get; init; }
-        public string? TagsJson { get; init; }
         public DateTimeOffset CreatedUtc { get; init; }
         public DateTimeOffset? LastUsedUtc { get; init; }
         public bool Pinned { get; init; }

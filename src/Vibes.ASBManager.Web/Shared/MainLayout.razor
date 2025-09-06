@@ -57,15 +57,7 @@
                                     <MudText Typo="Typo.body2">@c.Name</MudText>
                                 </MudStack>
                             </MudNavLink>
-                            @if (c.Tags is not null && c.Tags.Count > 0)
-                            {
-                                <div class="mt-1">
-                                    @foreach (var t in c.Tags)
-                                    {
-                                        <MudChip T="string" Variant="Variant.Outlined" Size="Size.Small" Class="mr-1 mb-1">@t</MudChip>
-                                    }
-                                </div>
-                            }
+                            
                         </MudStack>
                     </MudStack>
                 }
@@ -442,14 +434,11 @@
                 var info = new ConnectionInfo
                 {
                     Name = nameCandidate,
-                    ConnectionString = cs,
-                    Tags = (req.Tags ?? new List<string>()).ToList()
+                    ConnectionString = cs
                 };
-                info.NormalizeTags();
 
                 await ConnectionStore.SaveAsync(info);
                 await LoadConnectionsAsync();
-                Nav.NavigateTo($"/?connectionId={info.Id}");
             }
         }
     }

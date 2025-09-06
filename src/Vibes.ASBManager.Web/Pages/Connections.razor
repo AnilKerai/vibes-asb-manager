@@ -3,7 +3,7 @@
 @inject IConnectionStore ConnectionStore
 @inject IDialogService DialogService
 @inject NavigationManager Nav
-@inject ProtectedLocalStorage LocalStorage
+ 
 
 <MudPaper Class="pa-0">
     @if (_openConnections.Count == 0)
@@ -24,20 +24,7 @@
                     <TabContent>
                         <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
                             <MudIcon Icon="@Icons.Material.Filled.Hub" />
-                            @if (oc.Pinned)
-                            {
-                                <MudIcon Icon="@Icons.Material.Filled.Star" Color="Color.Warning" />
-                            }
                             <MudText Typo="Typo.body2">@oc.Name</MudText>
-                            @if (oc.Tags is not null && oc.Tags.Count > 0)
-                            {
-                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="ml-2">
-                                    @foreach (var t in oc.Tags)
-                                    {
-                                        <MudChip T="string" Variant="Variant.Outlined" Size="Size.Small">@t</MudChip>
-                                    }
-                                </MudStack>
-                            }
                             <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="@(() => CloseTab(oc.Id))" />
                         </MudStack>
                     </TabContent>
@@ -56,8 +43,7 @@
     [Parameter, SupplyParameterFromQuery(Name = "connectionId")] 
     public string? ConnectionId { get; set; }
 
-    private string _filterInput = string.Empty;
-    private List<string> _selectedFilterTags = [];
+    
 
     private readonly List<ConnectionInfo> _openConnections = [];
     private int _activeTabIndex;
@@ -65,7 +51,6 @@
     protected override async Task OnInitializedAsync()
     {
         _connections = await ConnectionStore.GetAllAsync();
-        await LoadFilterTagsAsync();
         await SelectConnectionFromQueryAsync();
     }
 
@@ -109,10 +94,8 @@
                 var info = new ConnectionInfo
                 {
                     Name = nameCandidate,
-                    ConnectionString = cs,
-                    Tags = (req.Tags ?? []).ToList()
+                    ConnectionString = cs
                 };
-                info.NormalizeTags();
 
                 await ConnectionStore.SaveAsync(info);
                 _connections = await ConnectionStore.GetAllAsync();
@@ -200,67 +183,7 @@
         }
     }
 
-    private IReadOnlyList<ConnectionInfo>? ApplyFilter()
-    {
-        if (_connections is null) return null;
-        if (_selectedFilterTags.Count == 0) return _connections;
-        var selected = _selectedFilterTags;
-        return _connections
-            .Where(c => c.Tags is not null && selected.All(t => c.Tags.Any(ct => string.Equals(ct, t, StringComparison.OrdinalIgnoreCase))))
-            .ToList();
-    }
-
-    private async Task AddFilterTag()
-    {
-        if (string.IsNullOrWhiteSpace(_filterInput)) return;
-        var raw = _filterInput.Trim();
-        if (raw.EndsWith(",")) raw = raw.TrimEnd(',').TrimEnd();
-        if (string.IsNullOrWhiteSpace(raw)) { _filterInput = string.Empty; return; }
-        var t = raw.ToLowerInvariant();
-        if (!_selectedFilterTags.Contains(t)) _selectedFilterTags.Add(t);
-        _filterInput = string.Empty;
-        await SaveFilterTagsAsync();
-    }
-
-    private async Task RemoveFilterTag(string t)
-    {
-        _selectedFilterTags.Remove(t);
-        await SaveFilterTagsAsync();
-    }
-
-    private async Task OnFilterKeyDown(KeyboardEventArgs e)
-    {
-        var key = e?.Key;
-        var code = e?.Code;
-        if (string.Equals(key, "Enter", StringComparison.Ordinal) || string.Equals(key, ",", StringComparison.Ordinal) || string.Equals(code, "Comma", StringComparison.Ordinal))
-            await AddFilterTag();
-    }
-
-    private async Task LoadFilterTagsAsync()
-    {
-        try
-        {
-            var res = await LocalStorage.GetAsync<string>("asb:selectedTags");
-            var saved = res.Success ? (res.Value ?? string.Empty) : string.Empty;
-            if (!string.IsNullOrWhiteSpace(saved))
-            {
-                _selectedFilterTags = saved.Split(',', StringSplitOptions.RemoveEmptyEntries)
-                    .Select(s => s.Trim().ToLowerInvariant())
-                    .Distinct()
-                    .ToList();
-            }
-        }
-        catch
-        {
-            // ignore
-        }
-    }
-
-    private async Task SaveFilterTagsAsync()
-    {
-        var s = string.Join(',', _selectedFilterTags);
-        try { await LocalStorage.SetAsync("asb:selectedTags", s); } catch { }
-    }
+    
 
     private static string? GetEndpointFromConnectionString(string cs)
     {
