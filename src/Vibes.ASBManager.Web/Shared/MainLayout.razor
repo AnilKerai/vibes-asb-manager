@@ -33,6 +33,13 @@
             </MudStack>
         </MudDrawerHeader>
         <MudNavMenu Dense="true">
+            <MudTextField @bind-Value="_search"
+                          Placeholder="Search connections"
+                          Adornment="Adornment.Start"
+                          AdornmentIcon="@Icons.Material.Filled.Search"
+                          Immediate="true"
+                          Clearable="true"
+                          Class="mx-2 my-2" />
             @if (_connections is null)
             {
                 <MudText Typo="Typo.caption" Class="mx-3 my-2 mud-text-disabled">Loading...</MudText>
@@ -43,23 +50,29 @@
             }
             else
             {
-                @foreach (var c in GetOrderedConnections())
+                @if (!GetOrderedConnections().Any())
                 {
-                    <MudStack Row="true" AlignItems="AlignItems.Start" Class="mx-2 my-2">
-                        <MudIconButton Icon="@(c.Pinned ? Icons.Material.Filled.Star : Icons.Material.Outlined.StarBorder)"
-                                       Color="@(c.Pinned ? Color.Warning : Color.Default)"
-                                       Size="Size.Small"
-                                       OnClick="@(()=> TogglePinnedAsync(c))" Class="mr-2" />
-                        <MudStack Spacing="0" Class="flex-grow-1">
-                            <MudNavLink Href="@($"/?connectionId={c.Id}")" Match="NavLinkMatch.All">
-                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
-                                    <MudIcon Icon="@Icons.Material.Filled.Hub" />
-                                    <MudText Typo="Typo.body2">@c.Name</MudText>
-                                </MudStack>
-                            </MudNavLink>
-                            
+                    <MudText Typo="Typo.caption" Class="mx-3 my-2">No matches</MudText>
+                }
+                else
+                {
+                    @foreach (var c in GetOrderedConnections())
+                    {
+                        <MudStack Row="true" AlignItems="AlignItems.Start" Class="mx-2 my-2">
+                            <MudIconButton Icon="@(c.Pinned ? Icons.Material.Filled.Star : Icons.Material.Outlined.StarBorder)"
+                                           Color="@(c.Pinned ? Color.Warning : Color.Default)"
+                                           Size="Size.Small"
+                                           OnClick="@(()=> TogglePinnedAsync(c))" Class="mr-2" />
+                            <MudStack Spacing="0" Class="flex-grow-1">
+                                <MudNavLink Href="@($"/?connectionId={c.Id}")" Match="NavLinkMatch.All">
+                                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                        <MudIcon Icon="@Icons.Material.Filled.Hub" />
+                                        <MudText Typo="Typo.body2">@HighlightName(c.Name)</MudText>
+                                    </MudStack>
+                                </MudNavLink>
+                            </MudStack>
                         </MudStack>
-                    </MudStack>
+                    }
                 }
             }
         </MudNavMenu>
@@ -75,6 +88,7 @@
     private bool _isDarkMode;
     private bool _drawerOpen = true;
     private IReadOnlyList<ConnectionInfo>? _connections;
+    private string _search = string.Empty;
 
     private MudTheme _theme = new()
     {
@@ -413,8 +427,46 @@
 
     private IEnumerable<ConnectionInfo> GetOrderedConnections()
     {
-        // Store returns ordered by pinned desc, name asc
-        return _connections ?? Array.Empty<ConnectionInfo>();
+        var items = _connections ?? Array.Empty<ConnectionInfo>();
+        if (!string.IsNullOrWhiteSpace(_search))
+        {
+            var term = _search.Trim();
+            items = items.Where(c => !string.IsNullOrWhiteSpace(c.Name) && c.Name.Contains(term, StringComparison.OrdinalIgnoreCase)).ToList();
+        }
+        return items
+            .OrderByDescending(c => c.Pinned)
+            .ThenBy(c => c.Name, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private MarkupString HighlightName(string? name)
+    {
+        if (string.IsNullOrEmpty(name)) return (MarkupString)string.Empty;
+        var encoded = System.Net.WebUtility.HtmlEncode(name);
+        if (string.IsNullOrWhiteSpace(_search)) return (MarkupString)encoded;
+        var term = _search.Trim();
+        if (term.Length == 0) return (MarkupString)encoded;
+
+        // Find and wrap all case-insensitive occurrences of term with <mark>
+        var sb = new System.Text.StringBuilder();
+        int i = 0;
+        while (i < name.Length)
+        {
+            var idx = name.IndexOf(term, i, StringComparison.OrdinalIgnoreCase);
+            if (idx < 0)
+            {
+                sb.Append(System.Net.WebUtility.HtmlEncode(name.Substring(i)));
+                break;
+            }
+            // append text before match
+            if (idx > i)
+                sb.Append(System.Net.WebUtility.HtmlEncode(name.Substring(i, idx - i)));
+            // append marked match
+            sb.Append("<mark>");
+            sb.Append(System.Net.WebUtility.HtmlEncode(name.Substring(idx, term.Length)));
+            sb.Append("</mark>");
+            i = idx + term.Length;
+        }
+        return new MarkupString(sb.ToString());
     }
 
     private async Task OpenAddDialog()
