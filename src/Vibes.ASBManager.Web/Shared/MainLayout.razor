@@ -5,6 +5,8 @@
 @inject IDialogService DialogService
 @inject NavigationManager Nav
 @inject ProtectedLocalStorage LocalStorage
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
 
 <MudThemeProvider Theme="@CeruleanTheme" IsDarkMode="@_isDarkMode" />
 <MudPopoverProvider />
@@ -28,8 +30,7 @@
                ClipMode="DrawerClipMode.Never">
         <MudDrawerHeader>
             <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="w-100">
-                <MudText Typo="Typo.subtitle1">Connections</MudText>
-                <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenAddDialog">Add</MudButton>
+                <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenAddDialog">Add Connection</MudButton>
             </MudStack>
         </MudDrawerHeader>
         <MudNavMenu Dense="true">
@@ -58,7 +59,7 @@
                 {
                     @foreach (var c in GetOrderedConnections())
                     {
-                        <MudStack Row="true" AlignItems="AlignItems.Start" Class="mx-2 my-2">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Class="mx-2 my-2">
                             <MudIconButton Icon="@(c.Pinned ? Icons.Material.Filled.Star : Icons.Material.Outlined.StarBorder)"
                                            Color="@(c.Pinned ? Color.Warning : Color.Default)"
                                            Size="Size.Small"
@@ -71,6 +72,14 @@
                                     </MudStack>
                                 </MudNavLink>
                             </MudStack>
+                            <MudMenu Dense="true" Icon="@Icons.Material.Filled.MoreVert" AnchorOrigin="Origin.TopRight" TransformOrigin="Origin.TopRight">
+                                <MudMenuItem OnClick="@(()=> CopyConnectionStringAsync(c))">
+                                    <MudIcon Icon="@Icons.Material.Filled.ContentCopy" Class="mr-2" /> Copy connection string
+                                </MudMenuItem>
+                                <MudMenuItem OnClick="@(()=> RemoveConnectionAsync(c))">
+                                    <MudIcon Icon="@Icons.Material.Filled.Delete" Class="mr-2" /> Remove from app
+                                </MudMenuItem>
+                            </MudMenu>
                         </MudStack>
                     }
                 }
@@ -467,6 +476,66 @@
             i = idx + term.Length;
         }
         return new MarkupString(sb.ToString());
+    }
+
+    private async Task CopyConnectionStringAsync(ConnectionInfo c)
+    {
+        var cs = c?.ConnectionString;
+        if (string.IsNullOrWhiteSpace(cs))
+        {
+            await DialogService.ShowMessageBox(
+                title: "No connection string",
+                message: "This connection has no saved connection string.",
+                yesText: "OK");
+            return;
+        }
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", cs);
+            Snackbar.Add("Connection string copied", Severity.Success);
+        }
+        catch
+        {
+            await DialogService.ShowMessageBox(
+                title: "Copy failed",
+                message: "Your browser blocked clipboard access. Please copy manually.",
+                yesText: "OK");
+        }
+    }
+
+    private async Task RemoveConnectionAsync(ConnectionInfo c)
+    {
+        if (c is null) return;
+        var confirm = await DialogService.ShowMessageBox(
+            title: "Remove Connection",
+            message: $"This will remove '{c.Name}' from this app. It will not delete the Service Bus namespace or entities.",
+            yesText: "Remove",
+            cancelText: "Cancel",
+            options: new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small });
+        if (confirm != true) return;
+        try
+        {
+            await ConnectionStore.DeleteAsync(c.Id);
+            await LoadConnectionsAsync();
+            try
+            {
+                var uri = new Uri(Nav.Uri);
+                var q = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query);
+                if (q.TryGetValue("connectionId", out var vals) && vals.Count > 0 && string.Equals(vals[0], c.Id, StringComparison.OrdinalIgnoreCase))
+                {
+                    Nav.NavigateTo("/", replace: true);
+                }
+            }
+            catch { }
+            Snackbar.Add("Connection removed", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            await DialogService.ShowMessageBox(
+                title: "Error",
+                message: $"Failed to remove connection: {ex.Message}",
+                yesText: "OK");
+        }
     }
 
     private async Task OpenAddDialog()
