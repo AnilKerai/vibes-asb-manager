@@ -28,9 +28,10 @@ public sealed class SqlConnectionStore(string connectionString) : IConnectionSto
                 connection_string as ConnectionString,
                 tags_json as TagsJson,
                 created_utc as CreatedUtc,
-                last_used_utc as LastUsedUtc
+                last_used_utc as LastUsedUtc,
+                pinned as Pinned
             from connections
-            order by name";
+            order by pinned desc, name";
         await using var conn = new NpgsqlConnection(_connectionString);
         var rows = await conn.QueryAsync<DbRow>(new CommandDefinition(sql, cancellationToken: ct));
         var list = new List<ConnectionInfo>();
@@ -43,7 +44,8 @@ public sealed class SqlConnectionStore(string connectionString) : IConnectionSto
                 ConnectionString = r.ConnectionString,
                 Tags = ParseTags(r.TagsJson),
                 CreatedUtc = r.CreatedUtc,
-                LastUsedUtc = r.LastUsedUtc
+                LastUsedUtc = r.LastUsedUtc,
+                Pinned = r.Pinned
             });
         }
         return list;
@@ -59,7 +61,8 @@ public sealed class SqlConnectionStore(string connectionString) : IConnectionSto
                 connection_string as ConnectionString,
                 tags_json as TagsJson,
                 created_utc as CreatedUtc,
-                last_used_utc as LastUsedUtc
+                last_used_utc as LastUsedUtc,
+                pinned as Pinned
             from connections
             where id = @id";
         await using var conn = new NpgsqlConnection(_connectionString);
@@ -72,7 +75,8 @@ public sealed class SqlConnectionStore(string connectionString) : IConnectionSto
             ConnectionString = row.ConnectionString,
             Tags = ParseTags(row.TagsJson),
             CreatedUtc = row.CreatedUtc,
-            LastUsedUtc = row.LastUsedUtc
+            LastUsedUtc = row.LastUsedUtc,
+            Pinned = row.Pinned
         };
     }
 
@@ -86,15 +90,16 @@ public sealed class SqlConnectionStore(string connectionString) : IConnectionSto
         // Preserve CreatedUtc if caller didn't set; fall back to now
         var created = connection.CreatedUtc == default ? now : connection.CreatedUtc;
 
-        const string upsert = @"insert into connections (id, name, connection_string, tags_json, created_utc, last_used_utc)
-values (@Id, @Name, @ConnectionString, @TagsJson, @CreatedUtc, @LastUsedUtc)
+        const string upsert = @"insert into connections (id, name, connection_string, tags_json, created_utc, last_used_utc, pinned)
+values (@Id, @Name, @ConnectionString, @TagsJson, @CreatedUtc, @LastUsedUtc, @Pinned)
 on conflict (id) do update set
     name = excluded.name,
     connection_string = excluded.connection_string,
     tags_json = excluded.tags_json,
     -- preserve original created_utc when updating
     created_utc = connections.created_utc,
-    last_used_utc = excluded.last_used_utc";
+    last_used_utc = excluded.last_used_utc,
+    pinned = excluded.pinned";
 
         var args = new
         {
@@ -103,7 +108,8 @@ on conflict (id) do update set
             ConnectionString = connection.ConnectionString,
             TagsJson = tagsJson,
             CreatedUtc = created,
-            LastUsedUtc = connection.LastUsedUtc
+            LastUsedUtc = connection.LastUsedUtc,
+            Pinned = connection.Pinned
         };
 
         await using var conn = new NpgsqlConnection(_connectionString);
@@ -151,10 +157,14 @@ on conflict (id) do update set
             connection_string text null,
             tags_json text null,
             created_utc timestamptz not null,
-            last_used_utc timestamptz null
+            last_used_utc timestamptz null,
+            pinned boolean not null default false
         )";
         await using var conn = new NpgsqlConnection(_connectionString);
         await conn.ExecuteAsync(new CommandDefinition(createTable, cancellationToken: ct));
+        // Migrate existing tables to include new columns
+        const string addPinned = "alter table if exists connections add column if not exists pinned boolean not null default false";
+        await conn.ExecuteAsync(new CommandDefinition(addPinned, cancellationToken: ct));
     }
 
     private sealed class DbRow
@@ -165,5 +175,6 @@ on conflict (id) do update set
         public string? TagsJson { get; init; }
         public DateTimeOffset CreatedUtc { get; init; }
         public DateTimeOffset? LastUsedUtc { get; init; }
+        public bool Pinned { get; init; }
     }
 }

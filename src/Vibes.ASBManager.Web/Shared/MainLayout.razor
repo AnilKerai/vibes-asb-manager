@@ -43,12 +43,31 @@
             }
             else
             {
-                @foreach (var c in _connections)
+                @foreach (var c in GetOrderedConnections())
                 {
-                    <MudNavLink Href="@($"/?connectionId={c.Id}")" Match="NavLinkMatch.All">
-                        <MudIcon Icon="@Icons.Material.Filled.Hub" Class="mr-2" />
-                        @c.Name
-                    </MudNavLink>
+                    <MudStack Row="true" AlignItems="AlignItems.Start" Class="mx-2 my-2">
+                        <MudIconButton Icon="@(c.Pinned ? Icons.Material.Filled.Star : Icons.Material.Outlined.StarBorder)"
+                                       Color="@(c.Pinned ? Color.Warning : Color.Default)"
+                                       Size="Size.Small"
+                                       OnClick="@(()=> TogglePinnedAsync(c))" Class="mr-2" />
+                        <MudStack Spacing="0" Class="flex-grow-1">
+                            <MudNavLink Href="@($"/?connectionId={c.Id}")" Match="NavLinkMatch.All">
+                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                    <MudIcon Icon="@Icons.Material.Filled.Hub" />
+                                    <MudText Typo="Typo.body2">@c.Name</MudText>
+                                </MudStack>
+                            </MudNavLink>
+                            @if (c.Tags is not null && c.Tags.Count > 0)
+                            {
+                                <div class="mt-1">
+                                    @foreach (var t in c.Tags)
+                                    {
+                                        <MudChip T="string" Variant="Variant.Outlined" Size="Size.Small" Class="mr-1 mb-1">@t</MudChip>
+                                    }
+                                </div>
+                            }
+                        </MudStack>
+                    </MudStack>
                 }
             }
         </MudNavMenu>
@@ -223,7 +242,7 @@
             DefaultBorderRadius = "4px",
             DrawerMiniWidthLeft = "56px",
             DrawerMiniWidthRight = "56px",
-            DrawerWidthLeft = "240px",
+            DrawerWidthLeft = "300px",
             DrawerWidthRight = "240px",
             AppbarHeight = "64px",
         },
@@ -390,6 +409,20 @@
             _connections = Array.Empty<ConnectionInfo>();
         }
         StateHasChanged();
+    }
+
+    private async Task TogglePinnedAsync(ConnectionInfo c)
+    {
+        if (c is null) return;
+        c.Pinned = !c.Pinned;
+        try { await ConnectionStore.SaveAsync(c); } catch { }
+        await LoadConnectionsAsync();
+    }
+
+    private IEnumerable<ConnectionInfo> GetOrderedConnections()
+    {
+        // Store returns ordered by pinned desc, name asc
+        return _connections ?? Array.Empty<ConnectionInfo>();
     }
 
     private async Task OpenAddDialog()

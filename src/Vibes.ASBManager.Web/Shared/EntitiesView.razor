@@ -39,6 +39,21 @@
         </MudItem>
 
         <MudItem xs="12" md="9">
+            <MudPaper Class="pa-3 mb-2" Elevation="1">
+                <MudStack Spacing="0">
+                    Tags: 
+                    @if (Connection?.Tags is not null && Connection.Tags.Count > 0)
+                    {
+                        <div class="mt-1">
+                            @foreach (var t in Connection.Tags)
+                            {
+                                <MudChip T="string" Variant="Variant.Outlined" Size="Size.Small" Class="mr-1 mb-1">@t</MudChip>
+                            }
+                        </div>
+                    }
+                </MudStack>
+            </MudPaper>
+
             <EntitiesActionBar
                 HasConnection="@HasConnection"
                 CanLoad="@CanLoad"
@@ -54,7 +69,6 @@
                 SelectedIsQueue="@SelectedIsQueue"
                 SelectedIsTopic="@SelectedIsTopic"
                 SelectedIsSubscription="@SelectedIsSubscription"
-                SelectedFriendly="@SelectedFriendly"
                 LiveOn="@(_liveActive || _liveDlq)"
                 OnRefresh="@RefreshEntities"
                 OnSend="@SendToSelected"

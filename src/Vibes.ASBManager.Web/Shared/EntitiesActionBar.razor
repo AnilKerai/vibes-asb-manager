@@ -83,7 +83,6 @@
     }
 
     <MudSpacer />
-    <MudText Typo="Typo.caption">Selected: @SelectedFriendly</MudText>
 </MudPaper>
 
 @code {
@@ -103,7 +102,6 @@
     [Parameter] public bool SelectedIsTopic { get; set; }
     [Parameter] public bool SelectedIsSubscription { get; set; }
 
-    [Parameter] public string SelectedFriendly { get; set; } = string.Empty;
     [Parameter] public bool LiveOn { get; set; }
 
     [Parameter] public EventCallback OnRefresh { get; set; }

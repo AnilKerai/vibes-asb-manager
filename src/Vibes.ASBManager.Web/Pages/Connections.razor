@@ -24,7 +24,20 @@
                     <TabContent>
                         <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
                             <MudIcon Icon="@Icons.Material.Filled.Hub" />
+                            @if (oc.Pinned)
+                            {
+                                <MudIcon Icon="@Icons.Material.Filled.Star" Color="Color.Warning" />
+                            }
                             <MudText Typo="Typo.body2">@oc.Name</MudText>
+                            @if (oc.Tags is not null && oc.Tags.Count > 0)
+                            {
+                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="ml-2">
+                                    @foreach (var t in oc.Tags)
+                                    {
+                                        <MudChip T="string" Variant="Variant.Outlined" Size="Size.Small">@t</MudChip>
+                                    }
+                                </MudStack>
+                            }
                             <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="@(() => CloseTab(oc.Id))" />
                         </MudStack>
                     </TabContent>

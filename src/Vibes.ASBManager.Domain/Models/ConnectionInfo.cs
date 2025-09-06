@@ -17,6 +17,11 @@ public sealed class ConnectionInfo
     /// </summary>
     public List<string> Tags { get; set; } = new();
 
+    /// <summary>
+    /// Whether this connection is pinned/starred. Pinned connections are shown first in lists.
+    /// </summary>
+    public bool Pinned { get; set; }
+
     public DateTimeOffset CreatedUtc { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? LastUsedUtc { get; set; }
 
