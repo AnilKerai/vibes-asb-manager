@@ -3,6 +3,10 @@
         <MudIcon Icon="@Icons.Material.Filled.Refresh" />
         <span class="ms-1">Refresh</span>
     </MudButton>
+    <MudButton Variant="Variant.Outlined" Color="@(LiveOn ? Color.Success : Color.Default)" Disabled="@(!CanRefreshMessages)" OnClick="@OnToggleLive">
+        <MudIcon Icon="@(LiveOn ? Icons.Material.Filled.Pause : Icons.Material.Filled.PlayArrow)" />
+        <span class="ms-1">@(LiveOn ? "Live On" : "Live")</span>
+    </MudButton>
 
     <MudDivider Vertical="true" Class="mx-2" />
 
@@ -88,6 +92,7 @@
     [Parameter] public bool CanSend { get; set; }
     [Parameter] public bool CanPurgeActive { get; set; }
     [Parameter] public bool CanPurgeDlq { get; set; }
+    [Parameter] public bool CanRefreshMessages { get; set; }
     [Parameter] public bool CanCreateSubscriptionAction { get; set; }
     [Parameter] public bool CanDeleteSubscriptionAction { get; set; }
 
@@ -99,6 +104,7 @@
     [Parameter] public bool SelectedIsSubscription { get; set; }
 
     [Parameter] public string SelectedFriendly { get; set; } = string.Empty;
+    [Parameter] public bool LiveOn { get; set; }
 
     [Parameter] public EventCallback OnRefresh { get; set; }
     [Parameter] public EventCallback OnSend { get; set; }
@@ -110,4 +116,5 @@
     [Parameter] public EventCallback OnDeleteQueue { get; set; }
     [Parameter] public EventCallback OnDeleteTopic { get; set; }
     [Parameter] public EventCallback OnDeleteSubscription { get; set; }
+    [Parameter] public EventCallback OnToggleLive { get; set; }
 }

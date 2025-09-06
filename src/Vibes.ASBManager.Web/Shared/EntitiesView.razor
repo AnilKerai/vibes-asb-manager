@@ -45,6 +45,7 @@
                 CanSend="@CanSend"
                 CanPurgeActive="@CanPurgeActive"
                 CanPurgeDlq="@CanPurgeDlq"
+                CanRefreshMessages="@CanRefreshMessages"
                 CanCreateSubscriptionAction="@CanCreateSubscriptionAction"
                 CanDeleteSubscriptionAction="@CanDeleteSubscriptionAction"
                 SelectedIsRoot="@SelectedIsRoot"
@@ -54,6 +55,7 @@
                 SelectedIsTopic="@SelectedIsTopic"
                 SelectedIsSubscription="@SelectedIsSubscription"
                 SelectedFriendly="@SelectedFriendly"
+                LiveOn="@(_liveActive || _liveDlq)"
                 OnRefresh="@RefreshEntities"
                 OnSend="@SendToSelected"
                 OnPurgeActive="@PurgeActiveSelected"
@@ -63,7 +65,8 @@
                 OnCreateSubscription="@CreateSubscriptionAsync"
                 OnDeleteQueue="@DeleteSelectedQueueAsync"
                 OnDeleteTopic="@DeleteSelectedTopicAsync"
-                OnDeleteSubscription="@DeleteSelectedSubscriptionAsync" />
+                OnDeleteSubscription="@DeleteSelectedSubscriptionAsync"
+                OnToggleLive="@ToggleLiveBothAsync" />
 
             <MudPaper Class="pa-3" Elevation="1">
                 <MudText Typo="Typo.h6">Settings</MudText>
@@ -148,10 +151,6 @@
                         <MudIcon Icon="@Icons.Material.Filled.Refresh" />
                         <span class="ms-1">Refresh</span>
                     </MudButton>
-                    <MudButton Variant="Variant.Outlined" Color="@(_liveActive ? Color.Success : Color.Default)" Disabled="@(!CanRefreshMessages)" OnClick="@ToggleLiveActiveAsync">
-                        <MudIcon Icon="@(_liveActive ? Icons.Material.Filled.Pause : Icons.Material.Filled.PlayArrow)" />
-                        <span class="ms-1">@(_liveActive ? "Live On" : "Live")</span>
-                    </MudButton>
                 </div>
                 <MudTable T="MessagePreview" Items="_activeMessages" Dense="true" Hover="true" RowsPerPage="10" Elevation="0" OnRowClick="OnActiveRowClick">
                     <HeaderContent>
@@ -178,10 +177,6 @@
                     <MudButton Variant="Variant.Outlined" Disabled="@(!CanRefreshMessages)" OnClick="@RefreshDlqAsync">
                         <MudIcon Icon="@Icons.Material.Filled.Refresh" />
                         <span class="ms-1">Refresh</span>
-                    </MudButton>
-                    <MudButton Variant="Variant.Outlined" Color="@(_liveDlq ? Color.Success : Color.Default)" Disabled="@(!CanRefreshMessages)" OnClick="@ToggleLiveDlqAsync">
-                        <MudIcon Icon="@(_liveDlq ? Icons.Material.Filled.Pause : Icons.Material.Filled.PlayArrow)" />
-                        <span class="ms-1">@(_liveDlq ? "Live On" : "Live")</span>
                     </MudButton>
                 </div>
                 <MudTable T="MessagePreview" Items="_dlqMessages" Dense="true" Hover="true" RowsPerPage="10" Elevation="0" OnRowClick="OnDlqRowClick">
@@ -1420,6 +1415,23 @@
         }
         else
         {
+            StopLiveDlq();
+        }
+        await Task.CompletedTask;
+    }
+
+    private async Task ToggleLiveBothAsync()
+    {
+        // Toggle both active and DLQ live polling together from the top action bar
+        var liveNow = _liveActive || _liveDlq;
+        if (!liveNow)
+        {
+            StartLiveActive();
+            StartLiveDlq();
+        }
+        else
+        {
+            StopLiveActive();
             StopLiveDlq();
         }
         await Task.CompletedTask;
