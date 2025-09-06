@@ -17,7 +17,7 @@
     <ProjectReference Include="..\Vibes.ASBManager.ServiceDefaults\Vibes.ASBManager.ServiceDefaults.csproj" />
   </ItemGroup>
 
-  <!-- Exclude MAUI-specific code and assets from compilation in this Blazor Server project -->
+  <!-- Exclude legacy MAUI files and assets from this Blazor Server project -->
   <ItemGroup>
     <Compile Remove="App.xaml.cs" />
     <Compile Remove="AppShell.xaml.cs" />
@@ -30,7 +30,5 @@
     <None Remove="Platforms\**\*" />
     <None Remove="Resources\**\*" />
   </ItemGroup>
-
-  <!-- Ensure an app data folder exists for server-side storage -->
 
 </Project>

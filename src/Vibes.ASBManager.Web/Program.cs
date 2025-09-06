@@ -14,41 +14,13 @@ builder.Services.AddServerSideBlazor();
 builder.Services.AddMudServices();
 builder.Services.AddScoped<ProtectedLocalStorage>();
 
-// Connection store (prefer PostgreSQL via Aspire connection string; fallback to JSON file)
+// Connection store (PostgreSQL via Aspire connection string)
 var pgConn = builder.Configuration.GetConnectionString("asbdb");
-if (!string.IsNullOrWhiteSpace(pgConn))
+if (string.IsNullOrWhiteSpace(pgConn))
 {
-    builder.Services.AddSingleton<IConnectionStore>(_ => new SqlConnectionStore(pgConn));
+    throw new InvalidOperationException("Missing connection string 'asbdb'. Run via Aspire AppHost or provide ConnectionStrings:asbdb environment variable.");
 }
-else
-{
-    // Prefer a configurable data directory for Docker volume mapping.
-    // 1) If ASB_DATA_DIR is set, use that directory
-    // 2) Else, if running in container, default to /app/data (writable by app user in official .NET images)
-    // 3) Else, use ContentRoot/App_Data
-    var configuredDataDir = builder.Configuration["ASB_DATA_DIR"];
-    var inContainer = builder.Configuration.GetValue<bool>("DOTNET_RUNNING_IN_CONTAINER");
-    var dataDir = !string.IsNullOrWhiteSpace(configuredDataDir)
-        ? configuredDataDir!
-        : (inContainer ? "/app/data" : Path.Combine(builder.Environment.ContentRootPath, "App_Data"));
-    Directory.CreateDirectory(dataDir);
-    var dataPath = Path.Combine(dataDir, "connections.json");
-
-    // One-time migration: if the new path doesn't exist, but the legacy App_Data file does, copy it
-    try
-    {
-        var legacyPath = Path.Combine(builder.Environment.ContentRootPath, "App_Data", "connections.json");
-        if (!File.Exists(dataPath) && File.Exists(legacyPath))
-        {
-            File.Copy(legacyPath, dataPath, overwrite: false);
-        }
-    }
-    catch
-    {
-        // best-effort migration; ignore errors
-    }
-    builder.Services.AddSingleton<IConnectionStore>(_ => new JsonConnectionStore(dataPath));
-}
+builder.Services.AddSingleton<IConnectionStore>(_ => new SqlConnectionStore(pgConn));
 
 // Service Bus services
 builder.Services.AddSingleton<IServiceBusAdmin, AzureServiceBusAdmin>();
