@@ -1,0 +1,1630 @@
+@inject IServiceBusAdmin Admin
+@inject IServiceBusMessaging Messaging
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@using System.Threading
+@using Vibes.ASBManager.Web.Models
+@implements IDisposable
+
+@if (_isLoading)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+
+@if (!_isLoading && _attemptedLoad && ((_queues?.Count ?? 0) == 0) && ((_topics?.Count ?? 0) == 0))
+{
+    <MudPaper Class="pa-6 mt-3 d-flex flex-column align-center justify-center" Elevation="1">
+        <MudIcon Icon="@Icons.Material.Outlined.Inbox" Size="Size.Large" />
+        <MudText Typo="Typo.h6" Class="mt-2">No entities</MudText>
+        <MudText Typo="Typo.body2">We couldn't find any queues, topics, or subscriptions.</MudText>
+    </MudPaper>
+}
+
+@if (!_isLoading && ((_queues?.Count ?? 0) > 0 || (_topics?.Count ?? 0) > 0))
+{
+    <MudGrid Class="mt-1">
+        <MudItem xs="12" md="3">
+            <MudPaper Outlined="true" Class="pa-3">
+                <MudText Typo="Typo.subtitle1" Class="mb-2">Service Bus</MudText>
+                <MudTreeView T="string" SelectedValue="_selectedTreeValue" SelectedValueChanged="OnTreeSelectionChanged">
+                    <MudTreeViewItem T="string" Text="Namespace" Value="@("root")" Icon="@Icons.Material.Filled.Hub" />
+                    <MudTreeViewItem T="string" Text="Queues" Value="@("queues")" Icon="@Icons.Material.Filled.Queue" Expanded="@_queuesExpanded">
+                        @if (_queues is not null)
+                        {
+                            foreach (var q in _queues)
+                            {
+                                <MudTreeViewItem T="string" Text="@q.Name" Value="@($"queue:{q.Name}")" Icon="@Icons.Material.Filled.Inbox" />
+                            }
+                        }
+                    </MudTreeViewItem>
+                    <MudTreeViewItem T="string" Text="Topics" Value="@("topics")" Icon="@Icons.Material.Filled.Topic" Expanded="@_topicsExpanded">
+                        @if (_topics is not null)
+                        {
+                            foreach (var t in _topics)
+                            {
+                                <MudTreeViewItem T="string" Text="@t.Name" Value="@($"topic:{t.Name}")" Icon="@Icons.Material.Filled.Topic" Expanded="@(_expandedTopicNames.Contains(t.Name))">
+                                    @if (_topicSubscriptions.TryGetValue(t.Name, out var subs) && subs is not null)
+                                    {
+                                        foreach (var s in subs)
+                                        {
+                                            <MudTreeViewItem T="string" Text="@s.SubscriptionName" Value="@($"subscription:{t.Name}/{s.SubscriptionName}")" Icon="@Icons.Material.Filled.Mail" />
+                                        }
+                                    }
+                                </MudTreeViewItem>
+                            }
+                        }
+                    </MudTreeViewItem>
+                </MudTreeView>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" md="9">
+            <MudPaper Class="pa-2 mb-2 d-flex align-center" Elevation="1" Style="gap:8px;">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!CanLoad)" OnClick="@RefreshEntities">
+                    <MudIcon Icon="@Icons.Material.Filled.Refresh" />
+                    <span class="ms-1">Refresh</span>
+                </MudButton>
+
+                <MudDivider Vertical="true" Class="mx-2" />
+
+                <MudButton Variant="Variant.Outlined" Disabled="@(!CanSend)" OnClick="@SendToSelected">
+                    <MudIcon Icon="@Icons.Material.Filled.Send" />
+                    <span class="ms-1">Send Message(s)</span>
+                </MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Error" Disabled="@(!CanPurgeActive)" OnClick="@PurgeActiveSelected">
+                    <MudIcon Icon="@Icons.Material.Filled.DeleteSweep" />
+                    <span class="ms-1">Purge Active</span>
+                </MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Error" Disabled="@(!CanPurgeDlq)" OnClick="@PurgeDlqSelected">
+                    <MudIcon Icon="@Icons.Material.Filled.DeleteForever" />
+                    <span class="ms-1">Purge DLQ</span>
+                </MudButton>
+
+                @if (HasConnection && (SelectedIsRoot || SelectedIsQueuesFolder || SelectedIsTopicsFolder))
+                {
+                    @if (SelectedIsRoot)
+                    {
+                        <MudButton Variant="Variant.Outlined" OnClick="@CreateQueueAsync">
+                            <MudIcon Icon="@Icons.Material.Filled.Add" />
+                            <span class="ms-1">New Queue</span>
+                        </MudButton>
+                        <MudButton Variant="Variant.Outlined" OnClick="@CreateTopicAsync">
+                            <MudIcon Icon="@Icons.Material.Filled.Add" />
+                            <span class="ms-1">New Topic</span>
+                        </MudButton>
+                    }
+                    else if (SelectedIsQueuesFolder)
+                    {
+                        <MudButton Variant="Variant.Outlined" OnClick="@CreateQueueAsync">
+                            <MudIcon Icon="@Icons.Material.Filled.Add" />
+                            <span class="ms-1">New Queue</span>
+                        </MudButton>
+                    }
+                    else if (SelectedIsTopicsFolder)
+                    {
+                        <MudButton Variant="Variant.Outlined" OnClick="@CreateTopicAsync">
+                            <MudIcon Icon="@Icons.Material.Filled.Add" />
+                            <span class="ms-1">New Topic</span>
+                        </MudButton>
+                    }
+                }
+                @if (SelectedIsQueue)
+                {
+                    <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="@DeleteSelectedQueueAsync">
+                        <MudIcon Icon="@Icons.Material.Filled.Delete" />
+                        <span class="ms-1">Delete Queue</span>
+                    </MudButton>
+                }
+                @if (SelectedIsTopic)
+                {
+                    <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="@DeleteSelectedTopicAsync">
+                        <MudIcon Icon="@Icons.Material.Filled.Delete" />
+                        <span class="ms-1">Delete Topic</span>
+                    </MudButton>
+                }
+
+                @if (SelectedIsTopic)
+                {
+                    <MudButton Variant="Variant.Outlined" Disabled="@(!CanCreateSubscriptionAction)" OnClick="@CreateSubscriptionAsync">
+                        <MudIcon Icon="@Icons.Material.Filled.Add" />
+                        <span class="ms-1">New Subscription</span>
+                    </MudButton>
+                }
+                @if (SelectedIsSubscription)
+                {
+                    <MudButton Variant="Variant.Outlined" Color="Color.Error" Disabled="@(!CanDeleteSubscriptionAction)" OnClick="@DeleteSelectedSubscriptionAsync">
+                        <MudIcon Icon="@Icons.Material.Filled.Delete" />
+                        <span class="ms-1">Delete Subscription</span>
+                    </MudButton>
+                }
+
+                <MudSpacer />
+                <MudText Typo="Typo.caption">Selected: @SelectedFriendly</MudText>
+            </MudPaper>
+
+            <MudPaper Class="pa-3" Elevation="1">
+                <MudText Typo="Typo.h6">Settings</MudText>
+                <MudText Typo="Typo.caption" Class="mb-2">Edit Time to Live and message expiry options for the selected entity.</MudText>
+
+                @if (string.IsNullOrEmpty(_selectedTreeValue) || (!SelectedIsQueue && !SelectedIsTopic && !SelectedIsSubscription))
+                {
+                    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">Select a queue, topic, or subscription from the tree to edit settings.</MudAlert>
+                }
+                else
+                {
+                    @if (_settingsLoading)
+                    {
+                        <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+                    }
+                    <MudGrid Class="mt-2">
+                        <MudItem xs="12" md="6">
+                            <MudTextField T="string" Label="Entity" Value="@SelectedFriendly" ReadOnly="true" />
+                        </MudItem>
+                        <MudItem xs="12" md="6">
+                            <MudTextField T="string" @bind-Value="_ttlText" Label="Default Message TTL (d.hh:mm:ss)" Placeholder="1.00:00:00" Immediate="true" />
+                            <MudText Typo="Typo.caption">Use d.hh:mm:ss (supports days), e.g., 1.00:00:00 for 1 day. Full TimeSpan format also accepted.</MudText>
+                        </MudItem>
+                        @if (SelectedIsQueue || SelectedIsSubscription)
+                        {
+                            <MudItem xs="12" md="6">
+                                <MudSwitch T="bool" @bind-Value="_deadLetterOnExpiration">Dead-letter on message expiration</MudSwitch>
+                            </MudItem>
+                        }
+                    </MudGrid>
+
+                    <div class="mt-3">
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!CanSaveSettings)" OnClick="@SaveSettingsAsync">Save</MudButton>
+                        <MudButton Class="ml-2" Variant="Variant.Outlined" Disabled="@(_settingsLoading || _settingsSaving)" OnClick="@ReloadSettingsAsync">Reset</MudButton>
+                    </div>
+                }
+            </MudPaper>
+
+            @if (SelectedIsSubscription)
+            {
+                <MudPaper Class="pa-3 mt-3" Elevation="1">
+                    <div class="d-flex align-center mb-2" style="gap:8px;">
+                        <MudText Typo="Typo.h6">Subscription Rules</MudText>
+                        <MudSpacer />
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!_canRefreshRules)" OnClick="@CreateRuleAsync">
+                            <MudIcon Icon="@Icons.Material.Filled.Add" />
+                            <span class="ms-1">Add Rule</span>
+                        </MudButton>
+                        <MudButton Variant="Variant.Outlined" Disabled="@(!_canRefreshRules)" OnClick="@RefreshRulesAsync">
+                            <MudIcon Icon="@Icons.Material.Filled.Refresh" />
+                            <span class="ms-1">Refresh</span>
+                        </MudButton>
+                    </div>
+                    @if (_rulesLoading)
+                    {
+                        <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+                    }
+                    <MudTable T="SubscriptionRuleInfo" Items="_rules" Dense="true" Hover="true" Elevation="0">
+                        <HeaderContent>
+                            <MudTh>Name</MudTh>
+                            <MudTh>Filter</MudTh>
+                            <MudTh>Action</MudTh>
+                            <MudTh>Actions</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="Name">@context.Name</MudTd>
+                            <MudTd DataLabel="Filter">@context.Filter</MudTd>
+                            <MudTd DataLabel="Action">@context.Action</MudTd>
+                            <MudTd>
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="@(() => DeleteRuleAsync(context))" />
+                            </MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                </MudPaper>
+            }
+
+            <MudPaper Class="pa-3 mt-3" Elevation="1">
+                <div class="d-flex align-center mb-2" style="gap:8px;">
+                    <MudText Typo="Typo.h6">Active Messages</MudText>
+                    <MudSpacer />
+                    <MudButton Variant="Variant.Outlined" Disabled="@(!CanRefreshMessages)" OnClick="@RefreshActiveAsync">
+                        <MudIcon Icon="@Icons.Material.Filled.Refresh" />
+                        <span class="ms-1">Refresh</span>
+                    </MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="@(_liveActive ? Color.Success : Color.Default)" Disabled="@(!CanRefreshMessages)" OnClick="@ToggleLiveActiveAsync">
+                        <MudIcon Icon="@(_liveActive ? Icons.Material.Filled.Pause : Icons.Material.Filled.PlayArrow)" />
+                        <span class="ms-1">@(_liveActive ? "Live On" : "Live")</span>
+                    </MudButton>
+                </div>
+                <MudTable T="MessagePreview" Items="_activeMessages" Dense="true" Hover="true" RowsPerPage="10" Elevation="0" OnRowClick="OnActiveRowClick">
+                    <HeaderContent>
+                        <MudTh>Seq</MudTh>
+                        <MudTh>Enqueued</MudTh>
+                        <MudTh>MessageId</MudTh>
+                        <MudTh>Subject</MudTh>
+                        <MudTh>CorrelationId</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Seq">@context.SequenceNumber</MudTd>
+                        <MudTd DataLabel="Enqueued">@context.EnqueuedTime.LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss")</MudTd>
+                        <MudTd DataLabel="MessageId">@context.MessageId</MudTd>
+                        <MudTd DataLabel="Subject">@context.Subject</MudTd>
+                        <MudTd DataLabel="CorrelationId">@context.CorrelationId</MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudPaper>
+
+            <MudPaper Class="pa-3 mt-3" Elevation="1">
+                <div class="d-flex align-center mb-2" style="gap:8px;">
+                    <MudText Typo="Typo.h6">Dead-letter Messages</MudText>
+                    <MudSpacer />
+                    <MudButton Variant="Variant.Outlined" Disabled="@(!CanRefreshMessages)" OnClick="@RefreshDlqAsync">
+                        <MudIcon Icon="@Icons.Material.Filled.Refresh" />
+                        <span class="ms-1">Refresh</span>
+                    </MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="@(_liveDlq ? Color.Success : Color.Default)" Disabled="@(!CanRefreshMessages)" OnClick="@ToggleLiveDlqAsync">
+                        <MudIcon Icon="@(_liveDlq ? Icons.Material.Filled.Pause : Icons.Material.Filled.PlayArrow)" />
+                        <span class="ms-1">@(_liveDlq ? "Live On" : "Live")</span>
+                    </MudButton>
+                </div>
+                <MudTable T="MessagePreview" Items="_dlqMessages" Dense="true" Hover="true" RowsPerPage="10" Elevation="0" OnRowClick="OnDlqRowClick">
+                    <HeaderContent>
+                        <MudTh>Seq</MudTh>
+                        <MudTh>Dead-lettered</MudTh>
+                        <MudTh>MessageId</MudTh>
+                        <MudTh>Subject</MudTh>
+                        <MudTh>CorrelationId</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Seq">@context.SequenceNumber</MudTd>
+                        <MudTd DataLabel="Dead-lettered">@context.EnqueuedTime.LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss")</MudTd>
+                        <MudTd DataLabel="MessageId">@context.MessageId</MudTd>
+                        <MudTd DataLabel="Subject">@context.Subject</MudTd>
+                        <MudTd DataLabel="CorrelationId">@context.CorrelationId</MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    [Parameter] public ConnectionInfo Connection { get; set; } = default!;
+
+    private string? _connectionString;
+    private string? _selectedTreeValue;
+    private bool _isLoading;
+    private bool _attemptedLoad;
+
+    private IReadOnlyList<QueueSummary>? _queues;
+    private IReadOnlyList<TopicSummary>? _topics;
+    private IReadOnlyList<SubscriptionSummary>? _subscriptions;
+    private Dictionary<string, IReadOnlyList<SubscriptionSummary>> _topicSubscriptions = new();
+
+    private string? _peekedQueue;
+    private IReadOnlyList<MessagePreview>? _peekedMessages;
+
+    private TopicSummary? _selectedTopic;
+    private string? _prevConnectionId;
+
+    // Subscription rules (filters)
+    private bool _rulesLoading;
+    private List<SubscriptionRuleInfo> _rules = new();
+
+    // Tree folder expand state
+    private bool _queuesExpanded;
+    private bool _topicsExpanded;
+    private HashSet<string> _expandedTopicNames = new();
+
+    // Settings state
+    private bool _settingsLoading;
+    private bool _settingsSaving;
+    private string _ttlText = string.Empty; // hh:mm:ss
+    private bool _deadLetterOnExpiration;
+
+    // Messages view state
+    private List<MessagePreview> _activeMessages = new();
+    private List<MessagePreview> _dlqMessages = new();
+    private bool _refreshingActive;
+    private bool _refreshingDlq;
+    private bool _liveActive;
+    private bool _liveDlq;
+    private CancellationTokenSource? _liveActiveCts;
+    private CancellationTokenSource? _liveDlqCts;
+
+    // Create subscription state
+    private bool _creatingSubscription;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Connection?.Id != _prevConnectionId)
+        {
+            _prevConnectionId = Connection?.Id;
+            ResetState();
+            _attemptedLoad = true;
+            if (CanLoad)
+            {
+                await LoadEntities();
+            }
+        }
+    }
+
+    private async Task DeleteSelectedSubscriptionAsync()
+    {
+        if (!HasConnection || !SelectedIsSubscription || string.IsNullOrWhiteSpace(_connectionString)) return;
+        if (!TryGetSubscription(out var topicName, out var subName)) return;
+
+        if (IsProdConnection())
+        {
+            var extra = await DialogService.ShowMessageBox(
+                title: "Production Guardrail",
+                markupMessage: (MarkupString)$"This connection is tagged '<b>prod</b>'. Deleting '<b>{topicName}/{subName}</b>' may impact production. Continue?",
+                yesText: "Continue",
+                cancelText: "Cancel",
+                options: new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small });
+            if (extra != true) return;
+        }
+
+        var confirm = await DialogService.ShowMessageBox(
+            title: "Delete Subscription",
+            markupMessage: (MarkupString)$"This will permanently delete subscription '<b>{topicName}/{subName}</b>' including its rules. Continue?",
+            yesText: "Delete",
+            cancelText: "Cancel",
+            options: new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small });
+        if (confirm != true) return;
+
+        try
+        {
+            await Admin.DeleteSubscriptionAsync(_connectionString!, topicName, subName);
+            Snackbar.Add($"Subscription '{topicName}/{subName}' deleted.", Severity.Success);
+            // Refresh topic subscriptions
+            var subs = await Admin.ListSubscriptionsAsync(_connectionString!, topicName);
+            _topicSubscriptions[topicName] = subs;
+            // Select the topic and keep it expanded
+            StopLiveActive();
+            StopLiveDlq();
+            _activeMessages.Clear();
+            _dlqMessages.Clear();
+            _expandedTopicNames.Add(topicName);
+            _selectedTreeValue = $"topic:{topicName}";
+            await LoadSettingsForSelection();
+            await RefreshActiveAsync();
+            await RefreshDlqAsync();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to delete subscription: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task ConfirmPurgeSubscription(string topicName, string subscriptionName)
+    {
+        if (string.IsNullOrWhiteSpace(_connectionString)) return;
+        if (IsProdConnection())
+        {
+            var extra = await DialogService.ShowMessageBox(
+                title: "Production Guardrail",
+                markupMessage: (MarkupString)$"This connection is tagged '<b>prod</b>'. Purging '<b>{topicName}/{subscriptionName}</b>' may impact production. Continue?",
+                yesText: "Continue",
+                cancelText: "Cancel",
+                options: new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small });
+            if (extra != true) return;
+        }
+        var confirm = await DialogService.ShowMessageBox(
+            title: "Purge Active Messages",
+            markupMessage: (MarkupString)$"This will delete active messages from subscription '<b>{topicName}/{subscriptionName}</b>' (up to the configured batch). Continue?",
+            yesText: "Purge",
+            cancelText: "Cancel",
+            options: new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small });
+        if (confirm != true) return;
+        try
+        {
+            var purged = await Messaging.PurgeSubscriptionAsync(_connectionString, topicName, subscriptionName, maxMessages: 1000);
+            Snackbar.Add($"Purged {purged} messages from {topicName}/{subscriptionName}.", Severity.Success);
+            await RefreshActiveIfNeededAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to purge subscription: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task ConfirmPurgeSubscriptionDlq(string topicName, string subscriptionName)
+    {
+        if (string.IsNullOrWhiteSpace(_connectionString)) return;
+        if (IsProdConnection())
+        {
+            var extra = await DialogService.ShowMessageBox(
+                title: "Production Guardrail",
+                markupMessage: (MarkupString)$"This connection is tagged '<b>prod</b>'. Purging DLQ for '<b>{topicName}/{subscriptionName}</b>' may impact production. Continue?",
+                yesText: "Continue",
+                cancelText: "Cancel",
+                options: new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small });
+            if (extra != true) return;
+        }
+        var confirm = await DialogService.ShowMessageBox(
+            title: "Purge DLQ Messages",
+            markupMessage: (MarkupString)$"This will delete messages from the Dead-letter subqueue of '<b>{topicName}/{subscriptionName}</b>' (up to the configured batch). Continue?",
+            yesText: "Purge",
+            cancelText: "Cancel",
+            options: new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small });
+        if (confirm != true) return;
+        try
+        {
+            var purged = await Messaging.PurgeSubscriptionDeadLetterAsync(_connectionString, topicName, subscriptionName, maxMessages: 1000);
+            Snackbar.Add($"Purged {purged} DLQ messages from {topicName}/{subscriptionName}.", Severity.Success);
+            await RefreshDlqIfNeededAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to purge subscription DLQ: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private void ResetState()
+    {
+        _connectionString = Connection?.ConnectionString;
+        StopLiveActive();
+        StopLiveDlq();
+        _activeMessages.Clear();
+        _dlqMessages.Clear();
+        _queues = null;
+        _topics = null;
+        _subscriptions = null;
+        _selectedTopic = null;
+        _peekedQueue = null;
+        _peekedMessages = null;
+        _selectedTreeValue = null;
+        _rules.Clear();
+        _queuesExpanded = false;
+        _topicsExpanded = false;
+        _expandedTopicNames.Clear();
+        // reset settings panel
+        _ttlText = string.Empty;
+        _deadLetterOnExpiration = false;
+    }
+
+    private bool CanLoad => !string.IsNullOrWhiteSpace(_connectionString);
+
+    private async Task LoadEntities()
+    {
+        if (string.IsNullOrWhiteSpace(_connectionString))
+            return;
+        try
+        {
+            _attemptedLoad = true;
+            _isLoading = true;
+            var queuesTask = Admin.ListQueuesAsync(_connectionString);
+            var topicsTask = Admin.ListTopicsAsync(_connectionString);
+            await Task.WhenAll(queuesTask, topicsTask);
+            _queues = queuesTask.Result;
+            _topics = topicsTask.Result;
+
+            // Preload subscriptions for the tree view
+            _topicSubscriptions = new();
+            if (_topics is not null)
+            {
+                foreach (var t in _topics)
+                {
+                    try
+                    {
+                        var subs = await Admin.ListSubscriptionsAsync(_connectionString, t.Name);
+                        _topicSubscriptions[t.Name] = subs;
+                    }
+                    catch
+                    {
+                        // Ignore individual topic errors for now
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to load entities: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task PeekQueue(string queueName)
+    {
+        if (string.IsNullOrWhiteSpace(_connectionString)) return;
+        try
+        {
+            _peekedQueue = $"Queue: {queueName}";
+            _peekedMessages = await Messaging.PeekQueueAsync(_connectionString, queueName, maxMessages: 50);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to peek queue: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task PeekQueueDlq(string queueName)
+    {
+        if (string.IsNullOrWhiteSpace(_connectionString)) return;
+        try
+        {
+            _peekedQueue = $"Queue DLQ: {queueName}";
+            _peekedMessages = await Messaging.PeekQueueDeadLetterAsync(_connectionString, queueName, maxMessages: 50);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to peek queue DLQ: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task OnTopicClick(TableRowClickEventArgs<TopicSummary> args)
+    {
+        if (string.IsNullOrWhiteSpace(_connectionString)) return;
+        try
+        {
+            _selectedTopic = args.Item;
+            var topicName = args.Item?.Name;
+            if (string.IsNullOrWhiteSpace(topicName)) return;
+            _subscriptions = await Admin.ListSubscriptionsAsync(_connectionString, topicName);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to load subscriptions: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task PeekSubscription(string subscriptionName)
+    {
+        if (string.IsNullOrWhiteSpace(_connectionString)) return;
+        var topicName = _selectedTopic?.Name;
+        if (string.IsNullOrWhiteSpace(topicName)) return;
+        try
+        {
+            _peekedQueue = $"Subscription: {topicName}/{subscriptionName}";
+            _peekedMessages = await Messaging.PeekSubscriptionAsync(_connectionString, topicName, subscriptionName, maxMessages: 50);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to peek subscription: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task PeekSubscriptionDlq(string subscriptionName)
+    {
+        if (string.IsNullOrWhiteSpace(_connectionString)) return;
+        var topicName = _selectedTopic?.Name;
+        if (string.IsNullOrWhiteSpace(topicName)) return;
+        try
+        {
+            _peekedQueue = $"Subscription DLQ: {topicName}/{subscriptionName}";
+            _peekedMessages = await Messaging.PeekSubscriptionDeadLetterAsync(_connectionString, topicName, subscriptionName, maxMessages: 50);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to peek subscription DLQ: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task OpenSendToQueue(string queueName)
+    {
+        if (string.IsNullOrWhiteSpace(_connectionString)) return;
+        var parameters = new DialogParameters
+        {
+            { "Title", $"Send to queue '{queueName}'" }
+        };
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<SendMessageDialog>("Send", parameters, options);
+        var result = await dialog.Result;
+        if (result is { Canceled: false, Data: SendMessageRequest req })
+        {
+            var count = req.Count < 1 ? 1 : req.Count;
+            var sent = 0;
+            var contentType = string.IsNullOrWhiteSpace(req.ContentType) ? null : req.ContentType;
+            try
+            {
+                for (var i = 0; i < count; i++)
+                {
+                    await Messaging.SendToQueueAsync(_connectionString, queueName, req.Body, req.Subject, req.CorrelationId, req.Properties, contentType);
+                    sent++;
+                    if (req.IntervalSeconds > 0 && i < count - 1)
+                    {
+                        try { await Task.Delay(TimeSpan.FromSeconds(req.IntervalSeconds)); } catch { }
+                    }
+                }
+                Snackbar.Add(sent == 1 ? $"Sent 1 message to {queueName}." : $"Sent {sent} messages to {queueName}.", Severity.Success);
+                if (CanRefreshMessages)
+                {
+                    await RefreshActiveAsync();
+                    try { await InvokeAsync(StateHasChanged); } catch { }
+                }
+            }
+            catch (Exception ex)
+            {
+                if (sent > 0)
+                    Snackbar.Add($"Sent {sent} messages before failure: {ex.Message}", Severity.Warning);
+                else
+                    Snackbar.Add($"Failed to send: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    private async Task OpenSendToTopic(string topicName)
+    {
+        if (string.IsNullOrWhiteSpace(_connectionString)) return;
+        var parameters = new DialogParameters
+        {
+            { "Title", $"Send to topic '{topicName}'" }
+        };
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<SendMessageDialog>("Send", parameters, options);
+        var result = await dialog.Result;
+        if (result is { Canceled: false, Data: SendMessageRequest req })
+        {
+            var count = req.Count < 1 ? 1 : req.Count;
+            var sent = 0;
+            var contentType = string.IsNullOrWhiteSpace(req.ContentType) ? null : req.ContentType;
+            try
+            {
+                for (var i = 0; i < count; i++)
+                {
+                    await Messaging.SendToTopicAsync(_connectionString, topicName, req.Body, req.Subject, req.CorrelationId, req.Properties, contentType);
+                    sent++;
+                    if (req.IntervalSeconds > 0 && i < count - 1)
+                    {
+                        try { await Task.Delay(TimeSpan.FromSeconds(req.IntervalSeconds)); } catch { }
+                    }
+                }
+                Snackbar.Add(sent == 1 ? $"Sent 1 message to {topicName}." : $"Sent {sent} messages to {topicName}.", Severity.Success);
+                if (CanRefreshMessages)
+                {
+                    await RefreshActiveAsync();
+                    try { await InvokeAsync(StateHasChanged); } catch { }
+                }
+            }
+            catch (Exception ex)
+            {
+                if (sent > 0)
+                    Snackbar.Add($"Sent {sent} messages before failure: {ex.Message}", Severity.Warning);
+                else
+                    Snackbar.Add($"Failed to send: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    private bool IsProdConnection()
+    {
+        var tags = Connection?.Tags;
+        if (tags is null || tags.Count == 0) return false;
+        return tags.Any(t => string.Equals(t, "prod", StringComparison.OrdinalIgnoreCase) || string.Equals(t, "env:prod", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private async Task ConfirmPurgeQueue(string queueName)
+    {
+        if (string.IsNullOrWhiteSpace(_connectionString)) return;
+        if (IsProdConnection())
+        {
+            var extra = await DialogService.ShowMessageBox(
+                title: "Production Guardrail",
+                markupMessage: (MarkupString)$"This connection is tagged '<b>prod</b>'. Purging '<b>{queueName}</b>' may impact production. Continue?",
+                yesText: "Continue",
+                cancelText: "Cancel",
+                options: new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small });
+            if (extra != true) return;
+        }
+        var confirm = await DialogService.ShowMessageBox(
+            title: "Purge Active Messages",
+            markupMessage: (MarkupString)$"This will delete active messages from queue '<b>{queueName}</b>' (up to the configured batch). Continue?",
+            yesText: "Purge",
+            cancelText: "Cancel",
+            options: new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small });
+        if (confirm != true) return;
+        try
+        {
+            var purged = await Messaging.PurgeQueueAsync(_connectionString, queueName, maxMessages: 1000);
+            Snackbar.Add($"Purged {purged} messages from {queueName}.", Severity.Success);
+            await RefreshActiveIfNeededAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to purge queue: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task ConfirmPurgeQueueDlq(string queueName)
+    {
+        if (string.IsNullOrWhiteSpace(_connectionString)) return;
+        if (IsProdConnection())
+        {
+            var extra = await DialogService.ShowMessageBox(
+                title: "Production Guardrail",
+                markupMessage: (MarkupString)$"This connection is tagged '<b>prod</b>'. Purging DLQ for '<b>{queueName}</b>' may impact production. Continue?",
+                yesText: "Continue",
+                cancelText: "Cancel",
+                options: new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small });
+            if (extra != true) return;
+        }
+        var confirm = await DialogService.ShowMessageBox(
+            title: "Purge DLQ Messages",
+            markupMessage: (MarkupString)$"This will delete messages from the Dead-letter subqueue of '<b>{queueName}</b>' (up to the configured batch). Continue?",
+            yesText: "Purge",
+            cancelText: "Cancel",
+            options: new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small });
+        if (confirm != true) return;
+        try
+        {
+            var purged = await Messaging.PurgeQueueDeadLetterAsync(_connectionString, queueName, maxMessages: 1000);
+            Snackbar.Add($"Purged {purged} DLQ messages from {queueName}.", Severity.Success);
+            await RefreshDlqIfNeededAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to purge queue DLQ: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task ConfirmReplayQueueDlq(string queueName)
+    {
+        if (string.IsNullOrWhiteSpace(_connectionString)) return;
+        if (IsProdConnection())
+        {
+            var extra = await DialogService.ShowMessageBox(
+                title: "Production Guardrail",
+                markupMessage: (MarkupString)$"This connection is tagged '<b>prod</b>'. Replaying DLQ for '<b>{queueName}</b>' may impact production. Continue?",
+                yesText: "Continue",
+                cancelText: "Cancel",
+                options: new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small });
+            if (extra != true) return;
+        }
+        var confirm = await DialogService.ShowMessageBox(
+            title: "Replay DLQ Messages",
+            markupMessage: (MarkupString)$"This will resend messages from the DLQ of '<b>{queueName}</b>' back to the active queue and complete them. Continue?",
+            yesText: "Replay",
+            cancelText: "Cancel",
+            options: new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small });
+        if (confirm != true) return;
+        try
+        {
+            var replayed = await Messaging.ReplayQueueDeadLettersAsync(_connectionString, queueName, maxMessages: 50);
+            Snackbar.Add($"Replayed {replayed} DLQ messages for {queueName}.", Severity.Success);
+            await RefreshActiveIfNeededAsync();
+            await RefreshDlqIfNeededAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to replay DLQ: {ex.Message}", Severity.Error);
+        }
+    }
+
+    // Selection helpers and action bar commands
+    private bool HasConnection => !string.IsNullOrWhiteSpace(_connectionString);
+    private bool SelectedIsQueue => _selectedTreeValue?.StartsWith("queue:", StringComparison.OrdinalIgnoreCase) == true;
+    private bool SelectedIsTopic => _selectedTreeValue?.StartsWith("topic:", StringComparison.OrdinalIgnoreCase) == true;
+    private bool SelectedIsSubscription => _selectedTreeValue?.StartsWith("subscription:", StringComparison.OrdinalIgnoreCase) == true;
+    private bool SelectedIsRoot => string.Equals(_selectedTreeValue, "root", StringComparison.OrdinalIgnoreCase);
+    private bool SelectedIsQueuesFolder => string.Equals(_selectedTreeValue, "queues", StringComparison.OrdinalIgnoreCase);
+    private bool SelectedIsTopicsFolder => string.Equals(_selectedTreeValue, "topics", StringComparison.OrdinalIgnoreCase);
+
+    private bool CanPeek => HasConnection && (SelectedIsQueue || SelectedIsSubscription);
+    private bool CanPeekDlq => HasConnection && (SelectedIsQueue || SelectedIsSubscription);
+    private bool CanSend => HasConnection && (SelectedIsQueue || SelectedIsTopic);
+    private bool CanPurgeActive => HasConnection && (SelectedIsQueue || SelectedIsSubscription);
+    private bool CanPurgeDlq => HasConnection && (SelectedIsQueue || SelectedIsSubscription);
+    private bool CanCreateSubscriptionAction => HasConnection && SelectedIsTopic && !_creatingSubscription;
+    private bool CanDeleteSubscriptionAction => HasConnection && SelectedIsSubscription;
+    private bool CanCreateQueueAction => HasConnection;
+    private bool CanCreateTopicAction => HasConnection;
+    private bool CanDeleteQueueAction => HasConnection && SelectedIsQueue;
+    private bool CanDeleteTopicAction => HasConnection && SelectedIsTopic;
+
+    private string SelectedFriendly
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(_selectedTreeValue)) return "(none)";
+            if (SelectedIsQueue) return $"Queue '{_selectedTreeValue.Substring("queue:".Length)}'";
+            if (SelectedIsTopic) return $"Topic '{_selectedTreeValue.Substring("topic:".Length)}'";
+            if (SelectedIsSubscription) return $"Subscription '{_selectedTreeValue.Substring("subscription:".Length)}'";
+            return _selectedTreeValue!;
+        }
+    }
+
+    private bool TryGetQueue(out string name)
+    {
+        name = string.Empty;
+        if (!SelectedIsQueue || string.IsNullOrEmpty(_selectedTreeValue)) return false;
+        name = _selectedTreeValue["queue:".Length..];
+        return !string.IsNullOrWhiteSpace(name);
+    }
+
+    private bool TryGetTopic(out string name)
+    {
+        name = string.Empty;
+        if (!SelectedIsTopic || string.IsNullOrEmpty(_selectedTreeValue)) return false;
+        name = _selectedTreeValue["topic:".Length..];
+        return !string.IsNullOrWhiteSpace(name);
+    }
+
+    private bool TryGetSubscription(out string topic, out string subscription)
+    {
+        topic = string.Empty;
+        subscription = string.Empty;
+        if (!SelectedIsSubscription || string.IsNullOrEmpty(_selectedTreeValue)) return false;
+        var payload = _selectedTreeValue["subscription:".Length..];
+        var parts = payload.Split('/', 2);
+        if (parts.Length != 2) return false;
+        topic = parts[0];
+        subscription = parts[1];
+        return !string.IsNullOrWhiteSpace(topic) && !string.IsNullOrWhiteSpace(subscription);
+    }
+
+    private async Task RefreshEntities()
+    {
+        if (HasConnection)
+            await LoadEntities();
+    }
+
+    private async Task PeekSelected()
+    {
+        if (!HasConnection) return;
+        if (TryGetQueue(out var q))
+        {
+            await PeekQueue(q);
+        }
+        else if (TryGetSubscription(out var t, out var s))
+        {
+            _selectedTopic = new TopicSummary { Name = t, SubscriptionCount = 0, ScheduledMessageCount = 0 };
+            await PeekSubscription(s);
+        }
+    }
+
+    private async Task PeekDlqSelected()
+    {
+        if (!HasConnection) return;
+        if (TryGetQueue(out var q))
+        {
+            await PeekQueueDlq(q);
+        }
+        else if (TryGetSubscription(out var t, out var s))
+        {
+            _selectedTopic = new TopicSummary { Name = t, SubscriptionCount = 0, ScheduledMessageCount = 0 };
+            await PeekSubscriptionDlq(s);
+        }
+    }
+
+    private async Task SendToSelected()
+    {
+        if (!HasConnection) return;
+        if (TryGetQueue(out var q))
+        {
+            await OpenSendToQueue(q);
+        }
+        else if (TryGetTopic(out var t))
+        {
+            await OpenSendToTopic(t);
+        }
+    }
+
+    private async Task PurgeActiveSelected()
+    {
+        if (!HasConnection) return;
+        if (TryGetQueue(out var q))
+        {
+            await ConfirmPurgeQueue(q);
+        }
+        else if (TryGetSubscription(out var t, out var s))
+        {
+            await ConfirmPurgeSubscription(t, s);
+        }
+    }
+
+    private async Task PurgeDlqSelected()
+    {
+        if (!HasConnection) return;
+        if (TryGetQueue(out var q))
+        {
+            await ConfirmPurgeQueueDlq(q);
+        }
+        else if (TryGetSubscription(out var t, out var s))
+        {
+            await ConfirmPurgeSubscriptionDlq(t, s);
+        }
+    }
+
+    // Tree selection change -> load settings for selected entity
+    private async Task OnTreeSelectionChanged(string? value)
+    {
+        // Clicking the top-level folders should expand them instead of changing selection
+        if (string.Equals(value, "queues", StringComparison.OrdinalIgnoreCase))
+        {
+            _queuesExpanded = !_queuesExpanded;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+        if (string.Equals(value, "topics", StringComparison.OrdinalIgnoreCase))
+        {
+            _topicsExpanded = !_topicsExpanded;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        // Toggle expand for individual topics to reveal subscriptions
+        if (!string.IsNullOrWhiteSpace(value) && value.StartsWith("topic:", StringComparison.OrdinalIgnoreCase))
+        {
+            var name = value.Substring("topic:".Length);
+            if (!string.IsNullOrWhiteSpace(name))
+            {
+                if (_expandedTopicNames.Contains(name)) _expandedTopicNames.Remove(name); else _expandedTopicNames.Add(name);
+            }
+        }
+
+        _selectedTreeValue = value;
+        // stop live polling and clear lists on entity switch
+        StopLiveActive();
+        StopLiveDlq();
+        _activeMessages.Clear();
+        _dlqMessages.Clear();
+        await LoadSettingsForSelection();
+        await LoadRulesForSelection();
+        // auto-load message lists for the new selection
+        await RefreshActiveAsync();
+        await RefreshDlqAsync();
+        StateHasChanged();
+    }
+
+    private async Task LoadSettingsForSelection()
+    {
+        _ttlText = string.Empty;
+        _deadLetterOnExpiration = false;
+        if (!HasConnection || string.IsNullOrEmpty(_selectedTreeValue)) return;
+        try
+        {
+            _settingsLoading = true;
+            if (TryGetQueue(out var q))
+            {
+                var s = await Admin.GetQueueSettingsAsync(_connectionString!, q);
+                _ttlText = FormatTimeSpan(s.DefaultMessageTimeToLive);
+                _deadLetterOnExpiration = s.DeadLetteringOnMessageExpiration;
+            }
+            else if (TryGetTopic(out var t))
+            {
+                var s = await Admin.GetTopicSettingsAsync(_connectionString!, t);
+                _ttlText = FormatTimeSpan(s.DefaultMessageTimeToLive);
+            }
+            else if (TryGetSubscription(out var topic, out var sub))
+            {
+                var s = await Admin.GetSubscriptionSettingsAsync(_connectionString!, topic, sub);
+                _ttlText = FormatTimeSpan(s.DefaultMessageTimeToLive);
+                _deadLetterOnExpiration = s.DeadLetteringOnMessageExpiration;
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to load settings: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _settingsLoading = false;
+        }
+    }
+
+    private static string FormatTimeSpan(TimeSpan ts) => ts.ToString("c");
+
+    private bool TryParseTtl(out TimeSpan ttl)
+    {
+        ttl = default;
+        if (string.IsNullOrWhiteSpace(_ttlText)) return false;
+        return TimeSpan.TryParse(_ttlText, System.Globalization.CultureInfo.InvariantCulture, out ttl)
+            || TimeSpan.TryParseExact(_ttlText, "c", System.Globalization.CultureInfo.InvariantCulture, out ttl);
+    }
+
+    private bool CanSaveSettings => HasConnection && !string.IsNullOrEmpty(_selectedTreeValue) && !_settingsSaving && !_settingsLoading && TryParseTtl(out _);
+
+    private bool CanRefreshMessages => HasConnection && (SelectedIsQueue || SelectedIsSubscription);
+
+    private async Task SaveSettingsAsync()
+    {
+        if (!HasConnection || string.IsNullOrEmpty(_selectedTreeValue)) return;
+        if (!TryParseTtl(out var ttl))
+        {
+            Snackbar.Add("Invalid TTL format. Use d.hh:mm:ss (e.g., 1.00:00:00) or standard TimeSpan format.", Severity.Warning);
+            return;
+        }
+        try
+        {
+            _settingsSaving = true;
+            if (TryGetQueue(out var q))
+            {
+                await Admin.UpdateQueueSettingsAsync(_connectionString!, q, ttl, _deadLetterOnExpiration);
+            }
+            else if (TryGetTopic(out var t))
+            {
+                await Admin.UpdateTopicSettingsAsync(_connectionString!, t, ttl);
+            }
+            else if (TryGetSubscription(out var topic, out var sub))
+            {
+                await Admin.UpdateSubscriptionSettingsAsync(_connectionString!, topic, sub, ttl, _deadLetterOnExpiration);
+            }
+            // Reload to reflect authoritative values from the server (SDK may coerce TTL)
+            await LoadSettingsForSelection();
+            Snackbar.Add("Settings saved.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to save settings: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _settingsSaving = false;
+        }
+    }
+
+    private async Task ReloadSettingsAsync()
+    {
+        await LoadSettingsForSelection();
+    }
+
+    private bool _canRefreshRules => HasConnection && SelectedIsSubscription;
+
+    private async Task LoadRulesForSelection()
+    {
+        _rules.Clear();
+        if (!HasConnection || string.IsNullOrEmpty(_selectedTreeValue)) return;
+        if (!TryGetSubscription(out var topic, out var sub)) return;
+        try
+        {
+            _rulesLoading = true;
+            var items = await Admin.ListSubscriptionRulesAsync(_connectionString!, topic, sub);
+            _rules = items.ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to load rules: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _rulesLoading = false;
+        }
+    }
+
+    private async Task RefreshRulesAsync()
+    {
+        await LoadRulesForSelection();
+    }
+
+    private async Task CreateSubscriptionAsync()
+    {
+        if (!SelectedIsTopic || string.IsNullOrWhiteSpace(_connectionString)) return;
+        if (!TryGetTopic(out var topicName)) return;
+        var parameters = new DialogParameters
+        {
+            ["Title"] = $"Create subscription for '{topicName}'"
+        };
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<CreateSubscriptionDialog>("Create Subscription", parameters, options);
+        var result = await dialog.Result;
+        if (result is not { Canceled: false, Data: CreateSubscriptionRequest req }) return;
+        var subName = req.Name?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(subName)) return;
+        try
+        {
+            _creatingSubscription = true;
+            await Admin.CreateSubscriptionAsync(_connectionString!, topicName, subName);
+            // Optionally apply settings from the dialog
+            TimeSpan ttlToSet;
+            try
+            {
+                if (!TryParseTtlString(req.TtlText, out var parsed))
+                {
+                    var current = await Admin.GetSubscriptionSettingsAsync(_connectionString!, topicName, subName);
+                    ttlToSet = current.DefaultMessageTimeToLive;
+                }
+                else ttlToSet = parsed;
+            }
+            catch
+            {
+                ttlToSet = TimeSpan.FromDays(14); // harmless fallback
+            }
+            try
+            {
+                await Admin.UpdateSubscriptionSettingsAsync(_connectionString!, topicName, subName, ttlToSet, req.DeadLetterOnExpiration);
+            }
+            catch { /* best-effort settings apply */ }
+
+            // Apply advanced properties
+            try
+            {
+                // Parse lock duration; fallback to 1 minute
+                TimeSpan lockDuration = TimeSpan.FromMinutes(1);
+                if (TryParseTtlString(req.LockDurationText, out var parsedLock))
+                    lockDuration = parsedLock;
+                await Admin.UpdateSubscriptionPropertiesAsync(
+                    _connectionString!,
+                    topicName,
+                    subName,
+                    req.RequiresSession,
+                    lockDuration,
+                    Math.Max(1, req.MaxDeliveryCount),
+                    req.EnableBatchedOperations,
+                    req.ForwardTo,
+                    req.ForwardDeadLetteredMessagesTo);
+            }
+            catch { /* ignore non-critical advanced property errors */ }
+
+            // Replace default rule with custom SQL if requested
+            if (string.Equals(req.InitialRuleMode, "Sql", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(req.InitialRuleSql))
+            {
+                try
+                {
+                    // Delete default match-all rule, then create SQL rule using the default name
+                    try { await Admin.DeleteSubscriptionRuleAsync(_connectionString!, topicName, subName, "$Default"); } catch { }
+                    await Admin.CreateSubscriptionSqlRuleAsync(_connectionString!, topicName, subName, "$Default", req.InitialRuleSql!, req.InitialRuleSqlAction);
+                }
+                catch
+                {
+                    Snackbar.Add("Created subscription, but failed to apply initial SQL rule.", Severity.Warning);
+                }
+            }
+            Snackbar.Add($"Subscription '{subName}' created on topic '{topicName}'.", Severity.Success);
+            // Refresh this topic's subscription list in the tree
+            var subs = await Admin.ListSubscriptionsAsync(_connectionString!, topicName);
+            _topicSubscriptions[topicName] = subs;
+            // Ensure the topic is expanded and select the new subscription
+            _expandedTopicNames.Add(topicName);
+            await OnTreeSelectionChanged($"subscription:{topicName}/{subName}");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to create subscription: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _creatingSubscription = false;
+        }
+    }
+
+    private static bool TryParseTtlString(string? text, out TimeSpan ttl)
+    {
+        ttl = default;
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        return TimeSpan.TryParse(text, System.Globalization.CultureInfo.InvariantCulture, out ttl)
+            || TimeSpan.TryParseExact(text, "c", System.Globalization.CultureInfo.InvariantCulture, out ttl);
+    }
+
+    private async Task CreateQueueAsync()
+    {
+        if (!HasConnection) return;
+        var parameters = new DialogParameters { ["Title"] = "Create Queue" };
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<CreateQueueDialog>("Create Queue", parameters, options);
+        var result = await dialog.Result;
+        if (result is not { Canceled: false, Data: CreateQueueRequest req }) return;
+        var name = req.Name?.Trim();
+        if (string.IsNullOrWhiteSpace(name)) return;
+        try
+        {
+            // Parse TTL and LockDuration
+            TimeSpan? ttlOpt = null;
+            if (TryParseTtlString(req.TtlText, out var parsedTtl)) ttlOpt = parsedTtl;
+            TimeSpan lockDuration = TimeSpan.FromMinutes(1);
+            if (TryParseTtlString(req.LockDurationText, out var parsedLock)) lockDuration = parsedLock;
+
+            await Admin.CreateQueueAsync(
+                _connectionString!,
+                name,
+                req.RequiresSession,
+                lockDuration,
+                Math.Max(1, req.MaxDeliveryCount),
+                req.EnableBatchedOperations,
+                ttlOpt,
+                req.DeadLetterOnExpiration,
+                req.ForwardTo,
+                req.ForwardDeadLetteredMessagesTo);
+            Snackbar.Add($"Queue '{name}' created.", Severity.Success);
+            // Refresh and select
+            _queues = await Admin.ListQueuesAsync(_connectionString!);
+            _selectedTreeValue = $"queue:{name}";
+            await LoadSettingsForSelection();
+            await RefreshActiveAsync();
+            await RefreshDlqAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to create queue: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task CreateTopicAsync()
+    {
+        if (!HasConnection) return;
+        var parameters = new DialogParameters { ["Title"] = "Create Topic" };
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<CreateTopicDialog>("Create Topic", parameters, options);
+        var result = await dialog.Result;
+        if (result is not { Canceled: false, Data: CreateTopicRequest req }) return;
+        var name = req.Name?.Trim();
+        if (string.IsNullOrWhiteSpace(name)) return;
+        try
+        {
+            await Admin.CreateTopicAsync(_connectionString!, name);
+            // Apply TTL
+            TimeSpan ttlToSet = TimeSpan.FromDays(14);
+            if (TryParseTtlString(req.TtlText, out var parsedTtl)) ttlToSet = parsedTtl;
+            try { await Admin.UpdateTopicSettingsAsync(_connectionString!, name, ttlToSet); } catch { }
+            // Advanced
+            try { await Admin.UpdateTopicPropertiesAsync(_connectionString!, name, req.EnableBatchedOperations); } catch { }
+            Snackbar.Add($"Topic '{name}' created.", Severity.Success);
+            // Refresh and select
+            _topics = await Admin.ListTopicsAsync(_connectionString!);
+            _expandedTopicNames.Add(name);
+            _selectedTreeValue = $"topic:{name}";
+            await LoadSettingsForSelection();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to create topic: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task DeleteSelectedQueueAsync()
+    {
+        if (!SelectedIsQueue || string.IsNullOrWhiteSpace(_connectionString)) return;
+        var name = _selectedTreeValue!["queue:".Length..];
+        if (IsProdConnection())
+        {
+            var extra = await DialogService.ShowMessageBox(
+                title: "Production Guardrail",
+                markupMessage: (MarkupString)$"This connection is tagged '<b>prod</b>'. Deleting queue '<b>{name}</b>' may impact production. Continue?",
+                yesText: "Continue",
+                cancelText: "Cancel",
+                options: new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small });
+            if (extra != true) return;
+        }
+        var confirm = await DialogService.ShowMessageBox(
+            title: "Delete Queue",
+            markupMessage: (MarkupString)$"This will permanently delete queue '<b>{name}</b>'. Continue?",
+            yesText: "Delete",
+            cancelText: "Cancel",
+            options: new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small });
+        if (confirm != true) return;
+        try
+        {
+            await Admin.DeleteQueueAsync(_connectionString!, name);
+            Snackbar.Add($"Queue '{name}' deleted.", Severity.Success);
+            await LoadEntities();
+            _selectedTreeValue = null;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to delete queue: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task DeleteSelectedTopicAsync()
+    {
+        if (!SelectedIsTopic || string.IsNullOrWhiteSpace(_connectionString)) return;
+        var name = _selectedTreeValue!["topic:".Length..];
+        if (IsProdConnection())
+        {
+            var extra = await DialogService.ShowMessageBox(
+                title: "Production Guardrail",
+                markupMessage: (MarkupString)$"This connection is tagged '<b>prod</b>'. Deleting topic '<b>{name}</b>' may impact production. Continue?",
+                yesText: "Continue",
+                cancelText: "Cancel",
+                options: new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small });
+            if (extra != true) return;
+        }
+        var confirm = await DialogService.ShowMessageBox(
+            title: "Delete Topic",
+            markupMessage: (MarkupString)$"This will permanently delete topic '<b>{name}</b>' and all its subscriptions. Continue?",
+            yesText: "Delete",
+            cancelText: "Cancel",
+            options: new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small });
+        if (confirm != true) return;
+        try
+        {
+            await Admin.DeleteTopicAsync(_connectionString!, name);
+            Snackbar.Add($"Topic '{name}' deleted.", Severity.Success);
+            await LoadEntities();
+            _selectedTreeValue = null;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to delete topic: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task CreateRuleAsync()
+    {
+        if (!_canRefreshRules) return;
+        var title = SelectedFriendly is { } s ? $"Create Rule - {s}" : "Create Rule";
+        var parameters = new DialogParameters
+        {
+            ["Title"] = title
+        };
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<CreateRuleDialog>("Create Rule", parameters, options);
+        var result = await dialog.Result;
+        if (result is { Canceled: false, Data: not null })
+        {
+            try
+            {
+                if (!TryGetSubscription(out var topic, out var sub)) return;
+                switch (result.Data)
+                {
+                    case CreateSqlRuleRequest sql:
+                        await Admin.CreateSubscriptionSqlRuleAsync(_connectionString!, topic, sub, sql.Name, sql.SqlExpression, sql.SqlAction);
+                        Snackbar.Add($"Rule '{sql.Name}' created.", Severity.Success);
+                        break;
+                    case CreateCorrelationRuleRequest corr:
+                        await Admin.CreateSubscriptionCorrelationRuleAsync(
+                            _connectionString!, topic, sub, corr.Name,
+                            corr.CorrelationId, corr.Subject, corr.To, corr.ReplyTo,
+                            corr.ReplyToSessionId, corr.SessionId, corr.ContentType,
+                            corr.ApplicationProperties);
+                        Snackbar.Add($"Rule '{corr.Name}' created.", Severity.Success);
+                        break;
+                    default:
+                        return;
+                }
+                await RefreshRulesAsync();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Failed to create rule: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    private async Task DeleteRuleAsync(SubscriptionRuleInfo rule)
+    {
+        if (!_canRefreshRules) return;
+        if (_rules.Count <= 1)
+        {
+            Snackbar.Add("Cannot delete the only rule on a subscription.", Severity.Warning);
+            return;
+        }
+        var confirm = await DialogService.ShowMessageBox(
+            title: "Delete Rule",
+            markupMessage: (MarkupString)$"Are you sure you want to delete rule '<b>{rule.Name}</b>'?",
+            yesText: "Delete",
+            cancelText: "Cancel",
+            options: new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.ExtraSmall });
+        if (confirm != true) return;
+        try
+        {
+            if (!TryGetSubscription(out var topic, out var sub)) return;
+            await Admin.DeleteSubscriptionRuleAsync(_connectionString!, topic, sub, rule.Name);
+            Snackbar.Add($"Rule '{rule.Name}' deleted.", Severity.Success);
+            await RefreshRulesAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to delete rule: {ex.Message}", Severity.Error);
+        }
+    }
+
+    // Active/DLQ refresh and live polling
+    private async Task RefreshActiveAsync()
+    {
+        if (!CanRefreshMessages || _refreshingActive) return;
+        try
+        {
+            _refreshingActive = true;
+            IReadOnlyList<MessagePreview> items = Array.Empty<MessagePreview>();
+            if (TryGetQueue(out var q))
+            {
+                items = await Messaging.PeekQueueAsync(_connectionString!, q, maxMessages: 200);
+            }
+            else if (TryGetSubscription(out var t, out var s))
+            {
+                items = await Messaging.PeekSubscriptionAsync(_connectionString!, t, s, maxMessages: 200);
+            }
+            _activeMessages = items
+                .OrderByDescending(m => m.EnqueuedTime)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to refresh active messages: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _refreshingActive = false;
+        }
+    }
+
+    private async Task RefreshDlqAsync()
+    {
+        if (!CanRefreshMessages || _refreshingDlq) return;
+        try
+        {
+            _refreshingDlq = true;
+            IReadOnlyList<MessagePreview> items = Array.Empty<MessagePreview>();
+            if (TryGetQueue(out var q))
+            {
+                items = await Messaging.PeekQueueDeadLetterAsync(_connectionString!, q, maxMessages: 200);
+            }
+            else if (TryGetSubscription(out var t, out var s))
+            {
+                items = await Messaging.PeekSubscriptionDeadLetterAsync(_connectionString!, t, s, maxMessages: 200);
+            }
+            _dlqMessages = items
+                .OrderByDescending(m => m.EnqueuedTime)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to refresh DLQ messages: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _refreshingDlq = false;
+        }
+    }
+
+    // Conditional refresh helpers for purge actions
+    private async Task RefreshActiveIfNeededAsync()
+    {
+        if (CanRefreshMessages && _activeMessages is not null && _activeMessages.Count > 0)
+        {
+            await RefreshActiveAsync();
+            try { await InvokeAsync(StateHasChanged); } catch { }
+        }
+    }
+
+    private async Task RefreshDlqIfNeededAsync()
+    {
+        if (CanRefreshMessages && _dlqMessages is not null && _dlqMessages.Count > 0)
+        {
+            await RefreshDlqAsync();
+            try { await InvokeAsync(StateHasChanged); } catch { }
+        }
+    }
+
+    private async Task ToggleLiveActiveAsync()
+    {
+        if (!_liveActive)
+        {
+            StartLiveActive();
+        }
+        else
+        {
+            StopLiveActive();
+        }
+        await Task.CompletedTask;
+    }
+
+    private async Task ToggleLiveDlqAsync()
+    {
+        if (!_liveDlq)
+        {
+            StartLiveDlq();
+        }
+        else
+        {
+            StopLiveDlq();
+        }
+        await Task.CompletedTask;
+    }
+
+    private void StartLiveActive()
+    {
+        if (!CanRefreshMessages) return;
+        StopLiveActive();
+        _liveActive = true;
+        _liveActiveCts = new CancellationTokenSource();
+        _ = Task.Run(async () =>
+        {
+            var token = _liveActiveCts.Token;
+            while (!token.IsCancellationRequested)
+            {
+                await RefreshActiveAsync();
+                try { await InvokeAsync(StateHasChanged); } catch { }
+                try { await Task.Delay(1000, token); } catch { break; }
+            }
+        });
+    }
+
+    private void StopLiveActive()
+    {
+        _liveActive = false;
+        try { _liveActiveCts?.Cancel(); } catch { }
+        try { _liveActiveCts?.Dispose(); } catch { }
+        _liveActiveCts = null;
+    }
+
+    private void StartLiveDlq()
+    {
+        if (!CanRefreshMessages) return;
+        StopLiveDlq();
+        _liveDlq = true;
+        _liveDlqCts = new CancellationTokenSource();
+        _ = Task.Run(async () =>
+        {
+            var token = _liveDlqCts.Token;
+            while (!token.IsCancellationRequested)
+            {
+                await RefreshDlqAsync();
+                try { await InvokeAsync(StateHasChanged); } catch { }
+                try { await Task.Delay(1000, token); } catch { break; }
+            }
+        });
+    }
+
+    private void StopLiveDlq()
+    {
+        _liveDlq = false;
+        try { _liveDlqCts?.Cancel(); } catch { }
+        try { _liveDlqCts?.Dispose(); } catch { }
+        _liveDlqCts = null;
+    }
+
+    private async Task OnActiveRowClick(TableRowClickEventArgs<MessagePreview> args)
+    {
+        if (args?.Item is null) return;
+        await ShowMessageDetailsAsync(args.Item.SequenceNumber, isDeadLetter: false);
+    }
+
+    private async Task OnDlqRowClick(TableRowClickEventArgs<MessagePreview> args)
+    {
+        if (args?.Item is null) return;
+        await ShowMessageDetailsAsync(args.Item.SequenceNumber, isDeadLetter: true);
+    }
+
+    private async Task ShowMessageDetailsAsync(long sequenceNumber, bool isDeadLetter)
+    {
+        if (string.IsNullOrWhiteSpace(_connectionString)) return;
+        try
+        {
+            MessageDetails? details = null;
+            if (TryGetQueue(out var q))
+            {
+                details = isDeadLetter
+                    ? await Messaging.PeekQueueDeadLetterMessageAsync(_connectionString!, q, sequenceNumber)
+                    : await Messaging.PeekQueueMessageAsync(_connectionString!, q, sequenceNumber);
+            }
+            else if (TryGetSubscription(out var t, out var s))
+            {
+                details = isDeadLetter
+                    ? await Messaging.PeekSubscriptionDeadLetterMessageAsync(_connectionString!, t, s, sequenceNumber)
+                    : await Messaging.PeekSubscriptionMessageAsync(_connectionString!, t, s, sequenceNumber);
+            }
+
+            if (details is null)
+            {
+                Snackbar.Add("Message not found. It may have moved or expired.", Severity.Info);
+                return;
+            }
+
+            var parameters = new DialogParameters
+            {
+                ["Details"] = details,
+                ["IsDeadLetter"] = isDeadLetter,
+                ["ConnectionString"] = _connectionString!
+            };
+            if (TryGetQueue(out var qq))
+            {
+                parameters["QueueName"] = qq;
+            }
+            else if (TryGetSubscription(out var tt, out var ss))
+            {
+                parameters["TopicName"] = tt;
+                parameters["SubscriptionName"] = ss;
+            }
+            var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Large, FullWidth = true };
+            var dialog = await DialogService.ShowAsync<MessageDetailsDialog>("Message Details", parameters, options);
+            var result = await dialog.Result;
+            if (result is { Canceled: false, Data: bool changed } && changed)
+            {
+                // If message was resubmitted from DLQ, both lists could change
+                await RefreshActiveIfNeededAsync();
+                await RefreshDlqIfNeededAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to fetch message details: {ex.Message}", Severity.Error);
+        }
+    }
+
+    public void Dispose()
+    {
+        StopLiveActive();
+        StopLiveDlq();
+    }
+}

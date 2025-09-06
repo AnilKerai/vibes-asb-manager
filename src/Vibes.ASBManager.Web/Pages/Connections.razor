@@ -1,0 +1,285 @@
+@page "/"
+@using Vibes.ASBManager.Domain.Models
+@using Vibes.ASBManager.Web.Models
+@using Vibes.ASBManager.Web.Shared
+@inject IConnectionStore ConnectionStore
+@inject IDialogService DialogService
+@inject NavigationManager Nav
+@inject ProtectedLocalStorage LocalStorage
+
+<MudPaper Class="pa-0">
+    @if (_openConnections.Count == 0)
+    {
+        <MudPaper Class="pa-6 d-flex flex-column align-center justify-center mb-4" Outlined="true">
+            <MudIcon Icon="@Icons.Material.Filled.LinkOff" Size="Size.Large" Color="Color.Default" Class="mud-text-disabled" />
+            <MudText Typo="Typo.h6" Class="mt-2">No connection selected</MudText>
+            <MudText Typo="Typo.body2" Class="mud-text-secondary" Align="Align.Center">Select a connection from the left drawer, or add a new connection to get started.</MudText>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" Class="mt-3" OnClick="OpenAddDialog">Add Connection</MudButton>
+        </MudPaper>
+    }
+    else
+    {
+        <MudTabs @bind-ActivePanelIndex="_activeTabIndex">
+            @foreach (var oc in _openConnections)
+            {
+                <MudTabPanel @key="oc.Id">
+                    <TabContent>
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                            <MudIcon Icon="@Icons.Material.Filled.Hub" />
+                            <MudText Typo="Typo.body2">@oc.Name</MudText>
+                            <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="@(() => CloseTab(oc.Id))" />
+                        </MudStack>
+                    </TabContent>
+                    <ChildContent>
+                        <EntitiesView Connection="oc" @key="oc.Id" />
+                    </ChildContent>
+                </MudTabPanel>
+            }
+        </MudTabs>
+    }
+</MudPaper>
+
+@code {
+    private IReadOnlyList<ConnectionInfo>? _connections;
+    
+    [Parameter, SupplyParameterFromQuery(Name = "connectionId")] 
+    public string? ConnectionId { get; set; }
+
+    private string _filterInput = string.Empty;
+    private List<string> _selectedFilterTags = [];
+
+    private readonly List<ConnectionInfo> _openConnections = [];
+    private int _activeTabIndex;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _connections = await ConnectionStore.GetAllAsync();
+        await LoadFilterTagsAsync();
+        SelectConnectionFromQuery();
+    }
+
+    protected override void OnParametersSet()
+    {
+        SelectConnectionFromQuery();
+    }
+
+    private void SelectConnectionFromQuery()
+    {
+        if (_connections is null || string.IsNullOrWhiteSpace(ConnectionId))
+            return;
+
+        var conn = _connections.FirstOrDefault(c => string.Equals(c.Id, ConnectionId, StringComparison.OrdinalIgnoreCase));
+        if (conn is not null)
+        {
+            OpenInTab(conn);
+        }
+    }
+
+    private async Task OpenAddDialog()
+    {
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<AddConnectionDialog>("Add Connection", new DialogParameters(), options);
+        var result = await dialog.Result;
+        if (result is { Canceled: false, Data: AddConnectionRequest req })
+        {
+            var cs = req.ConnectionString?.Trim() ?? string.Empty;
+            if (!string.IsNullOrWhiteSpace(cs))
+            {
+                var nameCandidate = string.IsNullOrWhiteSpace(req.Name) ? GetNameFromConnectionString(cs) : req.Name.Trim();
+                if (string.IsNullOrWhiteSpace(nameCandidate))
+                    nameCandidate = "connection";
+
+                var info = new ConnectionInfo
+                {
+                    Name = nameCandidate,
+                    ConnectionString = cs,
+                    Tags = (req.Tags ?? []).ToList()
+                };
+                info.NormalizeTags();
+
+                await ConnectionStore.SaveAsync(info);
+                _connections = await ConnectionStore.GetAllAsync();
+                // Navigate to the new connection
+                Nav.NavigateTo($"/?connectionId={info.Id}");
+            }
+        }
+    }
+
+    private void OpenInTab(ConnectionInfo conn)
+    {
+        if (conn is null) return;
+        var existingIndex = _openConnections.FindIndex(c => string.Equals(c.Id, conn.Id, StringComparison.OrdinalIgnoreCase));
+        if (existingIndex < 0)
+        {
+            _openConnections.Add(conn);
+            existingIndex = _openConnections.Count - 1;
+        }
+        _activeTabIndex = existingIndex;
+        StateHasChanged();
+    }
+
+    private void OnConnectionRowClick(MudBlazor.TableRowClickEventArgs<ConnectionInfo> args)
+    {
+        if (args?.Item is not null)
+            OpenInTab(args.Item);
+    }
+
+    private void CloseTab(string id)
+    {
+        var idx = _openConnections.FindIndex(c => string.Equals(c.Id, id, StringComparison.OrdinalIgnoreCase));
+        if (idx < 0) return;
+
+        _openConnections.RemoveAt(idx);
+
+        if (_openConnections.Count == 0)
+        {
+            // No tabs left: reset active index and clear the connectionId from the URL
+            _activeTabIndex = 0;
+            try { Nav.NavigateTo("/", replace: true); } catch { }
+            StateHasChanged();
+            return;
+        }
+
+        if (_activeTabIndex > idx)
+            _activeTabIndex--;
+        else if (_activeTabIndex == idx)
+            _activeTabIndex = Math.Min(idx, _openConnections.Count - 1);
+
+        // Keep URL in sync with the newly active tab so re-clicking the same connection in the drawer navigates again
+        var activeId = _openConnections[_activeTabIndex].Id;
+        try { Nav.NavigateTo($"/?connectionId={activeId}", replace: true); } catch { }
+
+        StateHasChanged();
+    }
+
+    private async Task DeleteConnection(ConnectionInfo conn)
+    {
+        if (conn is null) return;
+        var confirm = await DialogService.ShowMessageBox(
+            title: "Delete connection",
+            message: $"Are you sure you want to delete '{conn.Name}'?",
+            yesText: "Delete",
+            cancelText: "Cancel",
+            options: new DialogOptions { CloseButton = true });
+        if (confirm != true)
+            return;
+        try
+        {
+            await ConnectionStore.DeleteAsync(conn.Id);
+            // Close any open tab for this connection
+            CloseTab(conn.Id);
+            // Refresh list
+            _connections = await ConnectionStore.GetAllAsync();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            await DialogService.ShowMessageBox(
+                title: "Error",
+                message: $"Failed to delete connection: {ex.Message}",
+                yesText: "OK");
+        }
+    }
+
+    private IReadOnlyList<ConnectionInfo>? ApplyFilter()
+    {
+        if (_connections is null) return null;
+        if (_selectedFilterTags.Count == 0) return _connections;
+        var selected = _selectedFilterTags;
+        return _connections
+            .Where(c => c.Tags is not null && selected.All(t => c.Tags.Any(ct => string.Equals(ct, t, StringComparison.OrdinalIgnoreCase))))
+            .ToList();
+    }
+
+    private async Task AddFilterTag()
+    {
+        if (string.IsNullOrWhiteSpace(_filterInput)) return;
+        var raw = _filterInput.Trim();
+        if (raw.EndsWith(",")) raw = raw.TrimEnd(',').TrimEnd();
+        if (string.IsNullOrWhiteSpace(raw)) { _filterInput = string.Empty; return; }
+        var t = raw.ToLowerInvariant();
+        if (!_selectedFilterTags.Contains(t)) _selectedFilterTags.Add(t);
+        _filterInput = string.Empty;
+        await SaveFilterTagsAsync();
+    }
+
+    private async Task RemoveFilterTag(string t)
+    {
+        _selectedFilterTags.Remove(t);
+        await SaveFilterTagsAsync();
+    }
+
+    private async Task OnFilterKeyDown(KeyboardEventArgs e)
+    {
+        var key = e?.Key;
+        var code = e?.Code;
+        if (string.Equals(key, "Enter", StringComparison.Ordinal) || string.Equals(key, ",", StringComparison.Ordinal) || string.Equals(code, "Comma", StringComparison.Ordinal))
+            await AddFilterTag();
+    }
+
+    private async Task LoadFilterTagsAsync()
+    {
+        try
+        {
+            var res = await LocalStorage.GetAsync<string>("asb:selectedTags");
+            var saved = res.Success ? (res.Value ?? string.Empty) : string.Empty;
+            if (!string.IsNullOrWhiteSpace(saved))
+            {
+                _selectedFilterTags = saved.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                    .Select(s => s.Trim().ToLowerInvariant())
+                    .Distinct()
+                    .ToList();
+            }
+        }
+        catch
+        {
+            // ignore
+        }
+    }
+
+    private async Task SaveFilterTagsAsync()
+    {
+        var s = string.Join(',', _selectedFilterTags);
+        try { await LocalStorage.SetAsync("asb:selectedTags", s); } catch { }
+    }
+
+    private static string? GetEndpointFromConnectionString(string cs)
+    {
+        if (string.IsNullOrWhiteSpace(cs)) return null;
+        try
+        {
+            var part = cs.Split(';', StringSplitOptions.RemoveEmptyEntries)
+                .FirstOrDefault(p => p.TrimStart().StartsWith("Endpoint=", StringComparison.OrdinalIgnoreCase));
+            if (part is null) return null;
+            var idx = part.IndexOf('=');
+            if (idx < 0 || idx + 1 >= part.Length) return null;
+            var value = part[(idx + 1)..].Trim();
+            return value;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string? GetNameFromConnectionString(string cs)
+    {
+        var endpoint = GetEndpointFromConnectionString(cs);
+        if (string.IsNullOrWhiteSpace(endpoint)) return null;
+        try
+        {
+            var uri = new Uri(endpoint);
+            var host = uri.Host;
+            if (string.IsNullOrWhiteSpace(host)) return null;
+            var first = host.Split('.').FirstOrDefault();
+            return string.IsNullOrWhiteSpace(first) ? host : first;
+        }
+        catch
+        {
+            var trimmed = endpoint.Replace("sb://", string.Empty, StringComparison.OrdinalIgnoreCase);
+            var hostPart = trimmed.Split('/')[0];
+            var first = hostPart.Split('.').FirstOrDefault();
+            return string.IsNullOrWhiteSpace(first) ? hostPart : first;
+        }
+    }
+}

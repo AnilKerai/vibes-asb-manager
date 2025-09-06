@@ -1,0 +1,9 @@
+namespace Vibes.ASBManager.Application.Models;
+
+public sealed class SubscriptionSettings
+{
+    public required string TopicName { get; init; }
+    public required string SubscriptionName { get; init; }
+    public required System.TimeSpan DefaultMessageTimeToLive { get; set; }
+    public bool DeadLetteringOnMessageExpiration { get; set; }
+}

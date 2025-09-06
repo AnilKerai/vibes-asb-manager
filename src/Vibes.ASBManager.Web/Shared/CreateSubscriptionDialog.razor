@@ -1,0 +1,104 @@
+@using Vibes.ASBManager.Web.Models
+<MudDialog>
+    <TitleContent>@Title</TitleContent>
+    <DialogContent>
+        <MudForm @ref="_form">
+            <MudTextField T="string" Label="Subscription Name" @bind-Value="_name" Required="true" tabindex="1" />
+            <MudTextField T="string" Label="Default Message TTL (d.hh:mm:ss) - optional" @bind-Value="_ttlText" Placeholder="1.00:00:00" tabindex="2" />
+            <MudSwitch T="bool" @bind-Value="_deadLetterOnExpiration" tabindex="3">Dead-letter on message expiration</MudSwitch>
+            <MudText Typo="Typo.caption" Class="d-block mt-1">If left blank, TTL uses the default. You can edit settings later.</MudText>
+
+            <MudDivider Class="my-2" />
+            <MudText Typo="Typo.subtitle2">Advanced</MudText>
+            <MudGrid Class="mt-1">
+                <MudItem xs="12" md="6">
+                    <MudSwitch T="bool" @bind-Value="_requiresSession" tabindex="4">Requires Session</MudSwitch>
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField T="string" Label="Lock Duration (hh:mm:ss)" @bind-Value="_lockDurationText" Placeholder="00:01:00" tabindex="5" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudNumericField T="int" Label="Max Delivery Count" @bind-Value="_maxDeliveryCount" Min="1" Max="100" Immediate="true" tabindex="6" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudSwitch T="bool" @bind-Value="_enableBatchedOperations" tabindex="7">Enable Batched Operations</MudSwitch>
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField T="string" Label="Forward To (optional)" @bind-Value="_forwardTo" tabindex="8" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField T="string" Label="Forward DLQ To (optional)" @bind-Value="_forwardDlqTo" tabindex="9" />
+                </MudItem>
+            </MudGrid>
+
+            <MudDivider Class="my-2" />
+            <MudText Typo="Typo.subtitle2">Initial Rule</MudText>
+            <MudSelect T="string" Label="Mode" @bind-Value="_initialRuleMode" Dense="true" tabindex="10">
+                <MudSelectItem T="string" Value="@RuleModeMatchAll">Match all (default)</MudSelectItem>
+                <MudSelectItem T="string" Value="@RuleModeSql">SQL filter</MudSelectItem>
+            </MudSelect>
+            @if (_initialRuleMode == RuleModeSql)
+            {
+                <MudTextField T="string" Label="SQL Expression" @bind-Value="_initialRuleSql" Lines="2" Required="true" tabindex="11" />
+                <MudTextField T="string" Label="SQL Action (optional)" @bind-Value="_initialRuleSqlAction" Lines="2" tabindex="12" />
+            }
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="OnCancel" tabindex="98">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="OnSaveAsync" tabindex="99">Create</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance? MudDialog { get; set; }
+    [Parameter] public string Title { get; set; } = "Create Subscription";
+
+    private MudForm? _form;
+    private string _name = string.Empty;
+    private string? _ttlText;
+    private bool _deadLetterOnExpiration;
+
+    // Advanced defaults
+    private bool _requiresSession = false;
+    private string _lockDurationText = "00:01:00"; // 1 min
+    private int _maxDeliveryCount = 10;
+    private bool _enableBatchedOperations = true;
+    private string? _forwardTo;
+    private string? _forwardDlqTo;
+
+    // Rule defaults
+    private const string RuleModeMatchAll = "MatchAll";
+    private const string RuleModeSql = "Sql";
+    private string _initialRuleMode = RuleModeMatchAll;
+    private string? _initialRuleSql;
+    private string? _initialRuleSqlAction;
+
+    private async Task OnSaveAsync()
+    {
+        if (_form is not null)
+        {
+            await _form.Validate();
+        }
+        if (string.IsNullOrWhiteSpace(_name)) return;
+        if (_initialRuleMode == RuleModeSql && string.IsNullOrWhiteSpace(_initialRuleSql)) return;
+        var req = new CreateSubscriptionRequest
+        {
+            Name = _name.Trim(),
+            TtlText = string.IsNullOrWhiteSpace(_ttlText) ? null : _ttlText,
+            DeadLetterOnExpiration = _deadLetterOnExpiration,
+            RequiresSession = _requiresSession,
+            LockDurationText = string.IsNullOrWhiteSpace(_lockDurationText) ? null : _lockDurationText,
+            MaxDeliveryCount = _maxDeliveryCount,
+            EnableBatchedOperations = _enableBatchedOperations,
+            ForwardTo = string.IsNullOrWhiteSpace(_forwardTo) ? null : _forwardTo,
+            ForwardDeadLetteredMessagesTo = string.IsNullOrWhiteSpace(_forwardDlqTo) ? null : _forwardDlqTo,
+            InitialRuleMode = _initialRuleMode,
+            InitialRuleSql = _initialRuleSql,
+            InitialRuleSqlAction = _initialRuleSqlAction
+        };
+        MudDialog?.Close(DialogResult.Ok(req));
+    }
+
+    private void OnCancel() => MudDialog?.Cancel();
+}

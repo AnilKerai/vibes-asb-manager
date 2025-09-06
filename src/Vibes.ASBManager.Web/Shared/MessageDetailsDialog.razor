@@ -1,0 +1,221 @@
+@inherits ComponentBase
+
+<MudDialog>
+    <DialogContent>
+        <MudText Typo="Typo.h6">Message @Details.SequenceNumber</MudText>
+        <MudText Typo="Typo.caption" Class="mb-2">@(IsDeadLetter ? "Dead-lettered" : "Active")</MudText>
+
+        <MudGrid Class="mb-2">
+            <MudItem xs="12" md="6">
+                <MudTextField T="string" Label="Enqueued" Value="@FormatDate(Details.EnqueuedTime)" ReadOnly="true" />
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudTextField T="string" Label="Delivery Count" Value="@Details.DeliveryCount.ToString()" ReadOnly="true" />
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudTextField T="string" Label="SessionId" Value="@Details.SessionId" ReadOnly="true" />
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudTextField T="string" Label="TTL" Value="@Details.TimeToLive.ToString()" ReadOnly="true" />
+            </MudItem>
+        </MudGrid>
+
+        @if (!string.IsNullOrWhiteSpace(Details.DeadLetterReason) || !string.IsNullOrWhiteSpace(Details.DeadLetterErrorDescription))
+        {
+            <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="mb-2">
+                <b>DLQ Reason:</b> @Details.DeadLetterReason<br />
+                <b>Description:</b> @Details.DeadLetterErrorDescription
+            </MudAlert>
+        }
+
+        @if (IsDeadLetter)
+        {
+            <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="mb-2">
+                Replay target: @GetTargetLabel()
+            </MudAlert>
+        }
+
+        <MudText Typo="Typo.subtitle1" Class="mt-2">Message</MudText>
+        <MudGrid Class="mb-2">
+            <MudItem xs="12">
+                <MudTextField T="string" Label="Body" Lines="8" FullWidth="true" @bind-Value="_bodyEdit" ReadOnly="@(!IsDeadLetter)" tabindex="1" />
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudTextField T="string" Label="Subject" @bind-Value="_subjectEdit" ReadOnly="@(!IsDeadLetter)" tabindex="2" />
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudTextField T="string" Label="CorrelationId" @bind-Value="_correlationIdEdit" ReadOnly="@(!IsDeadLetter)" tabindex="3" />
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudTextField T="string" Label="Content Type" @bind-Value="_contentTypeEdit" ReadOnly="@(!IsDeadLetter)" tabindex="4" />
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudTextField T="string" Label="MessageId" @bind-Value="_messageIdEdit" ReadOnly="@(!IsDeadLetter)" tabindex="5" />
+            </MudItem>
+        </MudGrid>
+
+        <MudText Typo="Typo.subtitle2" Class="mt-1">Application Properties</MudText>
+        <MudTable T="PropertyRow" Items="_propertyRows" Dense="true">
+            <HeaderContent>
+                <MudTh>Key</MudTh>
+                <MudTh>Value</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd><MudTextField T="string" Placeholder="key" @bind-Value="context.Key" ReadOnly="@(!IsDeadLetter)" tabindex="0" /></MudTd>
+                <MudTd><MudTextField T="string" Placeholder="value" @bind-Value="context.Value" ReadOnly="@(!IsDeadLetter)" tabindex="0" /></MudTd>
+                <MudTd Class="d-flex justify-end">
+                    @if (IsDeadLetter)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small" OnClick="@(() => RemoveProperty(context))" tabindex="0" />
+                    }
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+        @if (IsDeadLetter)
+        {
+            <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Add" OnClick="@AddProperty" Class="mt-1" tabindex="6">Add property</MudButton>
+            <MudDivider Class="my-2" />
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                <MudCheckBox T="bool" Label="Also remove original from DLQ after resubmit" @bind-Value="_removeOriginal" tabindex="7" />
+                <MudCheckBox T="bool" Label="Generate new MessageId (GUID)" @bind-Value="_generateNewMessageId" tabindex="8" />
+            </MudStack>
+        }
+        @if (OperatingSystem.IsMacCatalyst())
+        {
+            <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2">
+                Tip: On macOS, Tab navigation may be disabled by system settings. Enable "Keyboard navigation" in System Settings → Keyboard to move focus between controls.
+            </MudAlert>
+        }
+    </DialogContent>
+    <DialogActions>
+        @if (IsDeadLetter)
+        {
+            <MudButton Color="Color.Primary" Disabled="@(!CanResubmit)" OnClick="@ResubmitAsync" tabindex="9">Resubmit</MudButton>
+        }
+        <MudButton OnClick="@Close" tabindex="10">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance? MudDialog { get; set; }
+
+    [Parameter] public MessageDetails Details { get; set; } = default!;
+    [Parameter] public bool IsDeadLetter { get; set; }
+    [Parameter] public string ConnectionString { get; set; } = string.Empty;
+    [Parameter] public string? QueueName { get; set; }
+    [Parameter] public string? TopicName { get; set; }
+    [Parameter] public string? SubscriptionName { get; set; }
+
+    [Inject] private IServiceBusMessaging Messaging { get; set; } = default!;
+    [Inject] private ISnackbar Snackbar { get; set; } = default!;
+
+    private bool _initialized;
+    private string _bodyEdit = string.Empty;
+    private string? _subjectEdit;
+    private string? _correlationIdEdit;
+    private List<PropertyRow> _propertyRows = new();
+    private bool _submitting;
+    private string? _contentTypeEdit;
+    private string? _messageIdEdit;
+    private bool _removeOriginal;
+    private bool _generateNewMessageId;
+
+    private string FormatDate(DateTimeOffset dto) => dto.LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss");
+
+    private void Close() => MudDialog?.Close();
+
+    protected override void OnParametersSet()
+    {
+        if (!_initialized && Details is not null)
+        {
+            _initialized = true;
+            _bodyEdit = Details.Body;
+            _subjectEdit = Details.Subject;
+            _correlationIdEdit = Details.CorrelationId;
+            _contentTypeEdit = Details.ContentType;
+            _messageIdEdit = Details.MessageId;
+            _propertyRows = Details.ApplicationProperties
+                .Select(kv => new PropertyRow { Key = kv.Key, Value = kv.Value?.ToString() ?? string.Empty })
+                .ToList();
+        }
+    }
+
+    private string GetTargetLabel()
+        => QueueName is not null ? $"queue '{QueueName}'"
+           : TopicName is not null ? $"topic '{TopicName}'"
+           : "unknown";
+
+    private bool CanResubmit => IsDeadLetter && !_submitting && !string.IsNullOrWhiteSpace(_bodyEdit) && (!string.IsNullOrWhiteSpace(ConnectionString)) && (QueueName is not null || TopicName is not null);
+
+    private async Task ResubmitAsync()
+    {
+        if (!CanResubmit) return;
+        try
+        {
+            _submitting = true;
+            var props = _propertyRows
+                .Where(p => !string.IsNullOrWhiteSpace(p.Key))
+                .ToDictionary(p => p.Key, p => p.Value ?? string.Empty);
+
+            var idToUse = _generateNewMessageId ? Guid.NewGuid().ToString() : _messageIdEdit;
+            if (_generateNewMessageId)
+            {
+                // reflect the new id in UI too (optional, dialog will close on success)
+                _messageIdEdit = idToUse;
+            }
+
+            if (!string.IsNullOrWhiteSpace(QueueName))
+            {
+                await Messaging.SendToQueueAsync(ConnectionString, QueueName!, _bodyEdit, _subjectEdit, _correlationIdEdit, props, _contentTypeEdit, idToUse);
+            }
+            else if (!string.IsNullOrWhiteSpace(TopicName))
+            {
+                await Messaging.SendToTopicAsync(ConnectionString, TopicName!, _bodyEdit, _subjectEdit, _correlationIdEdit, props, _contentTypeEdit, idToUse);
+            }
+
+            // Optionally remove original DLQ
+            if (_removeOriginal)
+            {
+                var removed = false;
+                if (!string.IsNullOrWhiteSpace(QueueName))
+                {
+                    removed = await Messaging.RemoveQueueDeadLetterMessageAsync(ConnectionString, QueueName!, Details.SequenceNumber);
+                }
+                else if (!string.IsNullOrWhiteSpace(TopicName) && !string.IsNullOrWhiteSpace(SubscriptionName))
+                {
+                    removed = await Messaging.RemoveSubscriptionDeadLetterMessageAsync(ConnectionString, TopicName!, SubscriptionName!, Details.SequenceNumber);
+                }
+                if (!removed)
+                    Snackbar.Add("Resubmitted, but failed to remove original from DLQ (not found within scan window).", Severity.Warning);
+            }
+
+            Snackbar.Add($"Message resubmitted to {GetTargetLabel()}.", Severity.Success);
+            MudDialog?.Close(DialogResult.Ok(true));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to resubmit message: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _submitting = false;
+        }
+    }
+
+    private void AddProperty()
+    {
+        _propertyRows.Add(new PropertyRow());
+    }
+
+    private void RemoveProperty(PropertyRow row)
+    {
+        _propertyRows.Remove(row);
+    }
+
+    private sealed class PropertyRow
+    {
+        public string Key { get; set; } = string.Empty;
+        public string? Value { get; set; }
+    }
+}

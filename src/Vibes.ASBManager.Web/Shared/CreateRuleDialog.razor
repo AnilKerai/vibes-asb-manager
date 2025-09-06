@@ -1,0 +1,131 @@
+@using Vibes.ASBManager.Web.Models
+<MudDialog>
+    <TitleContent>@Title</TitleContent>
+    <DialogContent>
+        <MudForm @ref="_form">
+            <MudTextField T="string" Label="Rule Name" @bind-Value="_name" Required="true" tabindex="1" />
+
+            <MudSelect T="string" Label="Rule Type" @bind-Value="_type" Dense="true" tabindex="2">
+                <MudSelectItem T="string" Value="@TypeSql">@TypeSql</MudSelectItem>
+                <MudSelectItem T="string" Value="@TypeCorrelation">@TypeCorrelation</MudSelectItem>
+            </MudSelect>
+
+            @if (_type == TypeSql)
+            {
+                <MudTextField T="string" Label="SQL Expression" @bind-Value="_sqlExpression" Lines="3" Required="true" tabindex="3" />
+                <MudTextField T="string" Label="SQL Action (optional)" @bind-Value="_sqlAction" Lines="2" tabindex="4" />
+            }
+            else
+            {
+                <MudGrid>
+                    <MudItem xs="12" md="6">
+                        <MudTextField T="string" Label="CorrelationId" @bind-Value="_corrId" tabindex="3" />
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <MudTextField T="string" Label="Subject" @bind-Value="_subject" tabindex="4" />
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <MudTextField T="string" Label="To" @bind-Value="_to" tabindex="5" />
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <MudTextField T="string" Label="ReplyTo" @bind-Value="_replyTo" tabindex="6" />
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <MudTextField T="string" Label="ReplyToSessionId" @bind-Value="_replyToSessionId" tabindex="7" />
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <MudTextField T="string" Label="SessionId" @bind-Value="_sessionId" tabindex="8" />
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <MudTextField T="string" Label="ContentType" @bind-Value="_contentType" tabindex="9" />
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudTextField T="string" Label="Application Properties (one per line: key=value)" @bind-Value="_propsText" Lines="4" tabindex="10" />
+                    </MudItem>
+                </MudGrid>
+            }
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="OnCancel" tabindex="20">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="OnSaveAsync" tabindex="21">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance? MudDialog { get; set; }
+    [Parameter] public string Title { get; set; } = "Create Rule";
+
+    private MudForm? _form;
+
+    private const string TypeSql = "SQL";
+    private const string TypeCorrelation = "Correlation";
+    private string _type = TypeSql;
+    private string _name = string.Empty;
+    private string _sqlExpression = string.Empty;
+    private string? _sqlAction;
+
+    private string? _corrId;
+    private string? _subject;
+    private string? _to;
+    private string? _replyTo;
+    private string? _replyToSessionId;
+    private string? _sessionId;
+    private string? _contentType;
+    private string _propsText = string.Empty;
+
+    private async Task OnSaveAsync()
+    {
+        if (_form is not null)
+        {
+            await _form.Validate();
+        }
+        if (string.IsNullOrWhiteSpace(_name))
+            return;
+
+        if (_type == "SQL")
+        {
+            if (string.IsNullOrWhiteSpace(_sqlExpression)) return;
+            var req = new CreateSqlRuleRequest
+            {
+                Name = _name.Trim(),
+                SqlExpression = _sqlExpression.Trim(),
+                SqlAction = string.IsNullOrWhiteSpace(_sqlAction) ? null : _sqlAction
+            };
+            MudDialog?.Close(DialogResult.Ok(req));
+        }
+        else
+        {
+            var props = new Dictionary<string, string>();
+            if (!string.IsNullOrWhiteSpace(_propsText))
+            {
+                var lines = _propsText.Split(['\r','\n'], StringSplitOptions.RemoveEmptyEntries);
+                foreach (var raw in lines)
+                {
+                    var line = raw.Trim();
+                    if (string.IsNullOrEmpty(line)) continue;
+                    var idx = line.IndexOf('=');
+                    if (idx <= 0) continue;
+                    var key = line.Substring(0, idx).Trim();
+                    var value = line[(idx + 1)..].Trim();
+                    if (!string.IsNullOrEmpty(key)) props[key] = value;
+                }
+            }
+            var req = new CreateCorrelationRuleRequest
+            {
+                Name = _name.Trim(),
+                CorrelationId = _corrId,
+                Subject = _subject,
+                To = _to,
+                ReplyTo = _replyTo,
+                ReplyToSessionId = _replyToSessionId,
+                SessionId = _sessionId,
+                ContentType = _contentType,
+                ApplicationProperties = props
+            };
+            MudDialog?.Close(DialogResult.Ok(req));
+        }
+    }
+
+    private void OnCancel() => MudDialog?.Cancel();
+}

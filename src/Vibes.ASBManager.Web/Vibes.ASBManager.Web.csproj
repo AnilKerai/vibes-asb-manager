@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Vibes.ASBManager.Web</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MudBlazor" Version="8.11.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Vibes.ASBManager.Application\Vibes.ASBManager.Application.csproj" />
+    <ProjectReference Include="..\Vibes.ASBManager.Infrastructure\Vibes.ASBManager.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <!-- Exclude MAUI-specific code and assets from compilation in this Blazor Server project -->
+  <ItemGroup>
+    <Compile Remove="App.xaml.cs" />
+    <Compile Remove="AppShell.xaml.cs" />
+    <Compile Remove="BlazorMainPage.xaml.cs" />
+    <Compile Remove="MauiProgram.cs" />
+    <Compile Remove="Platforms\**\*.cs" />
+    <None Remove="App.xaml" />
+    <None Remove="AppShell.xaml" />
+    <None Remove="BlazorMainPage.xaml" />
+    <None Remove="Platforms\**\*" />
+    <None Remove="Resources\**\*" />
+  </ItemGroup>
+
+  <!-- Ensure an app data folder exists for server-side storage -->
+
+</Project>

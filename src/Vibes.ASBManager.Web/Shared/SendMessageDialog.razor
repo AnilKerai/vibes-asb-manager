@@ -1,0 +1,95 @@
+@using Vibes.ASBManager.Web.Models
+<MudDialog>
+    <TitleContent>@Title</TitleContent>
+    <DialogContent>
+        <MudForm @ref="_form">
+            <MudTextField T="string" Label="Subject" @bind-Value="Model.Subject" tabindex="1" />
+            <MudTextField T="string" Label="Correlation Id" @bind-Value="Model.CorrelationId" tabindex="2" />
+            <MudAutocomplete T="string" Label="Content Type" @bind-Value="Model.ContentType" SearchFunc="SearchContentTypes" Clearable="true" tabindex="3" />
+            <MudTextField T="string" Label="Body" @bind-Value="Model.Body" Lines="6" Required="true" tabindex="4" />
+            <MudTextField T="string" Label="Properties (one per line: key=value)" @bind-Value="_propertiesText" Lines="4" tabindex="5" />
+            <MudNumericField T="int" Label="Count" @bind-Value="Model.Count" Min="1" Max="1000" Immediate="true" tabindex="6" />
+            <MudNumericField T="int" Label="Interval (seconds; 0 for none)" @bind-Value="Model.IntervalSeconds" Min="0" Max="3600" Immediate="true" tabindex="7" />
+        </MudForm>
+        @if (OperatingSystem.IsMacCatalyst())
+        {
+            <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2">
+                Tip: On macOS, Tab navigation may be disabled by system settings. Enable "Keyboard navigation" in System Settings → Keyboard to move focus between controls.
+            </MudAlert>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="OnCancel" tabindex="8">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Send" tabindex="9">Send</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance? MudDialog { get; set; }
+    [Parameter] public string Title { get; set; } = "Send Message(s)";
+
+    private MudForm? _form;
+    private string _propertiesText = string.Empty;
+
+    public SendMessageRequest Model { get; set; } = new();
+
+    // Popular/common content types to suggest in the autocomplete
+    private static readonly string[] CommonContentTypes =
+    [
+        "application/json",
+        "text/plain",
+        "application/xml",
+        "text/xml",
+        "text/json",
+        "application/octet-stream",
+        "application/x-www-form-urlencoded",
+        "application/ld+json",
+        "text/csv",
+        "application/pdf",
+        "application/zip",
+        "image/png",
+        "image/jpeg",
+        "application/vnd.ms-excel",
+        "application/msword"
+    ];
+
+    private Task<IEnumerable<string>> SearchContentTypes(string value, CancellationToken _)
+    {
+        var result = string.IsNullOrWhiteSpace(value)
+            ? CommonContentTypes
+            : CommonContentTypes.Where(x => x.Contains(value, StringComparison.OrdinalIgnoreCase));
+        return Task.FromResult(result);
+    }
+
+    private async Task Send()
+    {
+        if (_form is not null)
+        {
+            await _form.Validate();
+            if (!_form.IsValid)
+                return;
+        }
+
+        // Parse properties
+        Model.Properties.Clear();
+        if (!string.IsNullOrWhiteSpace(_propertiesText))
+        {
+            var lines = _propertiesText.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries);
+            foreach (var raw in lines)
+            {
+                var line = raw.Trim();
+                if (string.IsNullOrEmpty(line)) continue;
+                var idx = line.IndexOf('=');
+                if (idx <= 0) continue;
+                var key = line.Substring(0, idx).Trim();
+                var value = line[(idx + 1)..].Trim();
+                if (!string.IsNullOrEmpty(key))
+                    Model.Properties[key] = value;
+            }
+        }
+
+        MudDialog?.Close(DialogResult.Ok(Model));
+    }
+
+    private void OnCancel() => MudDialog?.Cancel();
+}

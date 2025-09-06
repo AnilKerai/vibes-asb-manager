@@ -1,0 +1,160 @@
+@using Vibes.ASBManager.Web.Models
+<MudDialog>
+    <TitleContent>@Title</TitleContent>
+    <DialogContent>
+        <MudForm @ref="_form">
+            <MudTextField @ref="_connField" Label="Connection String"
+                          Placeholder="Endpoint=sb://...;SharedAccessKeyName=...;SharedAccessKey=..."
+                          HelperText="Stored securely; hidden by default"
+                          @bind-Value="_connString" @bind-Value:after="OnConnStringAfter" Required="true"
+                          InputType="@(_showConn ? InputType.Text : InputType.Password)"
+                          Adornment="Adornment.End"
+                          AdornmentIcon="@(_showConn ? Icons.Material.Filled.VisibilityOff : Icons.Material.Filled.Visibility)"
+                          OnAdornmentClick="@ToggleShowConn"
+                          tabindex="1" />
+            <MudTextField Label="Name" Placeholder="e.g. mynamespace" HelperText="Defaults to namespace from connection string" @bind-Value="_name" @bind-Value:after="OnNameAfter" tabindex="2" />
+            <MudTextField Label="Add Tag" Placeholder="env:prod, svc:orders" HelperText="Press Enter or , to add" @bind-Value="_tagInput" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Add" OnAdornmentClick="AddTag" OnKeyDown="OnTagKeyDown" Immediate="true" tabindex="3" />
+            <div class="mt-2">
+                @foreach (var t in _newTags)
+                {
+                    <MudChip T="string" Class="mr-1 mb-1" Color="Color.Primary" Variant="Variant.Filled" OnClose="() => RemoveTag(t)">@t</MudChip>
+                }
+            </div>
+        </MudForm>
+        @if (OperatingSystem.IsMacCatalyst())
+        {
+            <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2">
+                Tip: On macOS, Tab navigation may be disabled by system settings. Enable "Keyboard navigation" in System Settings → Keyboard to move focus between controls.
+            </MudAlert>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="OnCancel" tabindex="4">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="OnSave" tabindex="5">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance? MudDialog { get; set; }
+    [Parameter] public string Title { get; set; } = "Add Connection";
+
+    private MudForm? _form;
+    private MudTextField<string>? _connField;
+    private string _connString = string.Empty;
+    private string _name = string.Empty;
+    private bool _nameTouched = false;
+    private string _tagInput = string.Empty;
+    private List<string> _newTags = new();
+    private bool _showConn = false;
+
+    private async Task OnSave()
+    {
+        if (_form is not null)
+        {
+            await _form.Validate();
+            if (!_form.IsValid)
+                return;
+        }
+        var req = new AddConnectionRequest
+        {
+            Name = GetFinalName(),
+            ConnectionString = _connString.Trim(),
+            Tags = _newTags.ToList()
+        };
+        MudDialog?.Close(DialogResult.Ok(req));
+    }
+
+    private void OnCancel() => MudDialog?.Cancel();
+
+    private Task OnConnStringAfter()
+    {
+        if (!_nameTouched || string.IsNullOrWhiteSpace(_name))
+        {
+            var derived = GetNameFromConnectionString(_connString);
+            if (!string.IsNullOrWhiteSpace(derived))
+                _name = derived!;
+        }
+        return Task.CompletedTask;
+    }
+
+    private Task OnNameAfter()
+    {
+        _nameTouched = true;
+        return Task.CompletedTask;
+    }
+
+    private void AddTag()
+    {
+        if (string.IsNullOrWhiteSpace(_tagInput)) return;
+        var raw = _tagInput.Trim();
+        if (raw.EndsWith(",")) raw = raw.TrimEnd(',').TrimEnd();
+        if (string.IsNullOrWhiteSpace(raw)) { _tagInput = string.Empty; return; }
+        var t = raw.ToLowerInvariant();
+        if (!_newTags.Contains(t)) _newTags.Add(t);
+        _tagInput = string.Empty;
+    }
+
+    private void RemoveTag(string t)
+    {
+        _newTags.Remove(t);
+    }
+
+    private void OnTagKeyDown(KeyboardEventArgs e)
+    {
+        var key = e?.Key;
+        var code = e?.Code;
+        if (string.Equals(key, "Enter", StringComparison.Ordinal) || string.Equals(key, ",", StringComparison.Ordinal) || string.Equals(code, "Comma", StringComparison.Ordinal))
+            AddTag();
+    }
+
+    private string GetFinalName()
+    {
+        if (!string.IsNullOrWhiteSpace(_name))
+            return _name.Trim();
+        var derived = GetNameFromConnectionString(_connString);
+        return string.IsNullOrWhiteSpace(derived) ? string.Empty : derived!;
+    }
+
+    private void ToggleShowConn() => _showConn = !_showConn;
+
+    private static string? GetEndpointFromConnectionString(string cs)
+    {
+        if (string.IsNullOrWhiteSpace(cs)) return null;
+        try
+        {
+            var part = cs.Split(';', StringSplitOptions.RemoveEmptyEntries)
+                .FirstOrDefault(p => p.TrimStart().StartsWith("Endpoint=", StringComparison.OrdinalIgnoreCase));
+            if (part is null) return null;
+            var idx = part.IndexOf('=');
+            if (idx < 0 || idx + 1 >= part.Length) return null;
+            var value = part[(idx + 1)..].Trim();
+            return value;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string? GetNameFromConnectionString(string cs)
+    {
+        var endpoint = GetEndpointFromConnectionString(cs);
+        if (string.IsNullOrWhiteSpace(endpoint)) return null;
+        try
+        {
+            var uri = new Uri(endpoint);
+            var host = uri.Host; // e.g. myns.servicebus.windows.net
+            if (string.IsNullOrWhiteSpace(host)) return null;
+            var first = host.Split('.').FirstOrDefault();
+            return string.IsNullOrWhiteSpace(first) ? host : first;
+        }
+        catch
+        {
+            // Fallback parsing
+            var trimmed = endpoint.Replace("sb://", string.Empty, StringComparison.OrdinalIgnoreCase);
+            var hostPart = trimmed.Split('/')[0];
+            var first = hostPart.Split('.').FirstOrDefault();
+            return string.IsNullOrWhiteSpace(first) ? hostPart : first;
+        }
+    }
+}
