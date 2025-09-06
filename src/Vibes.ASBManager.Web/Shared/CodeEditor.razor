@@ -1,15 +1,25 @@
 @using System.Text.Json
 @using System.Xml.Linq
+@using System.Text
+@inject ISnackbar Snackbar
 
 <MudStack Spacing="1">
     <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
-        <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="@FormatContent" Disabled="@ReadOnly">
+        <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="@FormatContent">
             <MudIcon Icon="@Icons.Material.Filled.FormatAlignLeft" />
             <span class="ml-1">Format</span>
         </MudButton>
-        <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="@MinifyContent" Disabled="@ReadOnly">
+        <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="@MinifyContent">
             <MudIcon Icon="@Icons.Material.Filled.DataObject" />
             <span class="ml-1">Minify</span>
+        </MudButton>
+        <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="@EncodeBase64">
+            <MudIcon Icon="@Icons.Material.Filled.Lock" />
+            <span class="ml-1">Encode b64</span>
+        </MudButton>
+        <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="@DecodeBase64">
+            <MudIcon Icon="@Icons.Material.Filled.LockOpen" />
+            <span class="ml-1">Decode b64</span>
         </MudButton>
         <MudSwitch T="bool" @bind-Value="_wrap" Color="Color.Primary" Class="ml-2">Wrap</MudSwitch>
         <MudSpacer />
@@ -113,6 +123,41 @@
         catch
         {
             // ignore minify errors
+        }
+    }
+
+    private async Task EncodeBase64()
+    {
+        try
+        {
+            var bytes = Encoding.UTF8.GetBytes(_text ?? string.Empty);
+            _text = Convert.ToBase64String(bytes);
+            await ValueChanged.InvokeAsync(_text);
+        }
+        catch
+        {
+            Snackbar?.Add("Failed to encode as Base64.", Severity.Error);
+        }
+    }
+
+    private async Task DecodeBase64()
+    {
+        if (string.IsNullOrWhiteSpace(_text)) return;
+        try
+        {
+            var s = _text.Trim();
+            // Handle URL-safe base64 and missing padding
+            s = s.Replace('-', '+').Replace('_', '/');
+            s = new string(s.Where(c => !char.IsWhiteSpace(c)).ToArray());
+            var mod = s.Length % 4;
+            if (mod > 0) s = s.PadRight(s.Length + (4 - mod), '=');
+            var bytes = Convert.FromBase64String(s);
+            _text = Encoding.UTF8.GetString(bytes);
+            await ValueChanged.InvokeAsync(_text);
+        }
+        catch
+        {
+            Snackbar?.Add("Invalid Base64 content.", Severity.Error);
         }
     }
 }

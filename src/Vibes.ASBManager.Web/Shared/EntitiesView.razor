@@ -147,6 +147,8 @@
                 <div class="d-flex align-center mb-2" style="gap:8px;">
                     <MudText Typo="Typo.h6">Active Messages</MudText>
                     <MudSpacer />
+                    <MudIconButton Icon="@Icons.Material.Filled.ChevronLeft" Disabled="@(_activeHistory.Count == 0 || !CanRefreshMessages)" OnClick="@OnActivePrevPage" title="Previous page" />
+                    <MudIconButton Icon="@Icons.Material.Filled.ChevronRight" Disabled="@(_activeMessages is null || _activeMessages.Count < PageSize || !CanRefreshMessages)" OnClick="@OnActiveNextPage" title="Next page" />
                     <MudButton Variant="Variant.Outlined" Disabled="@(!CanRefreshMessages)" OnClick="@RefreshActiveAsync">
                         <MudIcon Icon="@Icons.Material.Filled.Refresh" />
                         <span class="ms-1">Refresh</span>
@@ -174,6 +176,8 @@
                 <div class="d-flex align-center mb-2" style="gap:8px;">
                     <MudText Typo="Typo.h6">Dead-letter Messages</MudText>
                     <MudSpacer />
+                    <MudIconButton Icon="@Icons.Material.Filled.ChevronLeft" Disabled="@(_dlqHistory.Count == 0 || !CanRefreshMessages)" OnClick="@OnDlqPrevPage" title="Previous page" />
+                    <MudIconButton Icon="@Icons.Material.Filled.ChevronRight" Disabled="@(_dlqMessages is null || _dlqMessages.Count < PageSize || !CanRefreshMessages)" OnClick="@OnDlqNextPage" title="Next page" />
                     <MudButton Variant="Variant.Outlined" Disabled="@(!CanRefreshMessages)" OnClick="@RefreshDlqAsync">
                         <MudIcon Icon="@Icons.Material.Filled.Refresh" />
                         <span class="ms-1">Refresh</span>
@@ -239,6 +243,11 @@
     private List<MessagePreview> _dlqMessages = new();
     private bool _refreshingActive;
     private bool _refreshingDlq;
+    private const int PageSize = 50;
+    private long? _activeAnchor;
+    private long? _dlqAnchor;
+    private Stack<long?> _activeHistory = new();
+    private Stack<long?> _dlqHistory = new();
     private bool _liveActive;
     private bool _liveDlq;
     private CancellationTokenSource? _liveActiveCts;
@@ -381,6 +390,10 @@
         StopLiveDlq();
         _activeMessages.Clear();
         _dlqMessages.Clear();
+        _activeAnchor = null;
+        _dlqAnchor = null;
+        _activeHistory.Clear();
+        _dlqHistory.Clear();
         _queues = null;
         _topics = null;
         _subscriptions = null;
@@ -1326,11 +1339,11 @@
             IReadOnlyList<MessagePreview> items = Array.Empty<MessagePreview>();
             if (TryGetQueue(out var q))
             {
-                items = await Messaging.PeekQueueAsync(_connectionString!, q, maxMessages: 200);
+                items = await Messaging.PeekQueueAsync(_connectionString!, q, maxMessages: PageSize, fromSequenceNumber: _activeAnchor);
             }
             else if (TryGetSubscription(out var t, out var s))
             {
-                items = await Messaging.PeekSubscriptionAsync(_connectionString!, t, s, maxMessages: 200);
+                items = await Messaging.PeekSubscriptionAsync(_connectionString!, t, s, maxMessages: PageSize, fromSequenceNumber: _activeAnchor);
             }
             _activeMessages = items
                 .OrderByDescending(m => m.EnqueuedTime)
@@ -1355,11 +1368,11 @@
             IReadOnlyList<MessagePreview> items = Array.Empty<MessagePreview>();
             if (TryGetQueue(out var q))
             {
-                items = await Messaging.PeekQueueDeadLetterAsync(_connectionString!, q, maxMessages: 200);
+                items = await Messaging.PeekQueueDeadLetterAsync(_connectionString!, q, maxMessages: PageSize, fromSequenceNumber: _dlqAnchor);
             }
             else if (TryGetSubscription(out var t, out var s))
             {
-                items = await Messaging.PeekSubscriptionDeadLetterAsync(_connectionString!, t, s, maxMessages: 200);
+                items = await Messaging.PeekSubscriptionDeadLetterAsync(_connectionString!, t, s, maxMessages: PageSize, fromSequenceNumber: _dlqAnchor);
             }
             _dlqMessages = items
                 .OrderByDescending(m => m.EnqueuedTime)
@@ -1442,6 +1455,9 @@
         if (!CanRefreshMessages) return;
         StopLiveActive();
         _liveActive = true;
+        // Reset paging to latest when starting live
+        _activeAnchor = null;
+        _activeHistory.Clear();
         _liveActiveCts = new CancellationTokenSource();
         _ = Task.Run(async () =>
         {
@@ -1468,6 +1484,9 @@
         if (!CanRefreshMessages) return;
         StopLiveDlq();
         _liveDlq = true;
+        // Reset paging to latest when starting live
+        _dlqAnchor = null;
+        _dlqHistory.Clear();
         _liveDlqCts = new CancellationTokenSource();
         _ = Task.Run(async () =>
         {
@@ -1495,10 +1514,46 @@
         await ShowMessageDetailsAsync(args.Item.SequenceNumber, isDeadLetter: false);
     }
 
+    private async Task OnActiveNextPage()
+    {
+        if (!CanRefreshMessages) return;
+        if (_activeMessages is null || _activeMessages.Count == 0) return;
+        var minSeq = _activeMessages.Min(m => m.SequenceNumber);
+        _activeHistory.Push(_activeAnchor);
+        _activeAnchor = minSeq > PageSize ? minSeq - PageSize : 0;
+        await RefreshActiveAsync();
+    }
+
+    private async Task OnActivePrevPage()
+    {
+        if (!CanRefreshMessages) return;
+        if (_activeHistory.Count == 0) return;
+        _activeAnchor = _activeHistory.Pop();
+        await RefreshActiveAsync();
+    }
+
     private async Task OnDlqRowClick(TableRowClickEventArgs<MessagePreview> args)
     {
         if (args?.Item is null) return;
         await ShowMessageDetailsAsync(args.Item.SequenceNumber, isDeadLetter: true);
+    }
+
+    private async Task OnDlqNextPage()
+    {
+        if (!CanRefreshMessages) return;
+        if (_dlqMessages is null || _dlqMessages.Count == 0) return;
+        var minSeq = _dlqMessages.Min(m => m.SequenceNumber);
+        _dlqHistory.Push(_dlqAnchor);
+        _dlqAnchor = minSeq > PageSize ? minSeq - PageSize : 0;
+        await RefreshDlqAsync();
+    }
+
+    private async Task OnDlqPrevPage()
+    {
+        if (!CanRefreshMessages) return;
+        if (_dlqHistory.Count == 0) return;
+        _dlqAnchor = _dlqHistory.Pop();
+        await RefreshDlqAsync();
     }
 
     private async Task ShowMessageDetailsAsync(long sequenceNumber, bool isDeadLetter)
