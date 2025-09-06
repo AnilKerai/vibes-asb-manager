@@ -15,7 +15,31 @@ builder.Services.AddMudServices();
 builder.Services.AddScoped<ProtectedLocalStorage>();
 
 // App data path for connection store
-var dataPath = Path.Combine(builder.Environment.ContentRootPath, "App_Data", "connections.json");
+// Prefer a configurable data directory for Docker volume mapping.
+// 1) If ASB_DATA_DIR is set, use that directory
+// 2) Else, if running in container, default to /app/data (writable by app user in official .NET images)
+// 3) Else, use ContentRoot/App_Data
+var configuredDataDir = builder.Configuration["ASB_DATA_DIR"];
+var inContainer = builder.Configuration.GetValue<bool>("DOTNET_RUNNING_IN_CONTAINER");
+var dataDir = !string.IsNullOrWhiteSpace(configuredDataDir)
+    ? configuredDataDir!
+    : (inContainer ? "/app/data" : Path.Combine(builder.Environment.ContentRootPath, "App_Data"));
+Directory.CreateDirectory(dataDir);
+var dataPath = Path.Combine(dataDir, "connections.json");
+
+// One-time migration: if the new path doesn't exist, but the legacy App_Data file does, copy it
+try
+{
+    var legacyPath = Path.Combine(builder.Environment.ContentRootPath, "App_Data", "connections.json");
+    if (!File.Exists(dataPath) && File.Exists(legacyPath))
+    {
+        File.Copy(legacyPath, dataPath, overwrite: false);
+    }
+}
+catch
+{
+    // best-effort migration; ignore errors
+}
 builder.Services.AddSingleton<IConnectionStore>(_ => new JsonConnectionStore(dataPath));
 
 // Service Bus services
