@@ -17,9 +17,8 @@ services:
       retries: 20
 
   web:
-    build:
-      context: .
-      dockerfile: src/Vibes.ASBManager.Web/Dockerfile
+    image: ${WEB_IMAGE:-anilkerai/vibes-asb-manager-web:latest}
+    pull_policy: always
     container_name: asbmanager-web
     environment:
       ASPNETCORE_ENVIRONMENT: Development

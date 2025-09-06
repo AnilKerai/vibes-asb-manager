@@ -1,3 +1,86 @@
+### Run with a minimal Compose file (without cloning the repo)
+
+If you don't want to clone the source code, you can still run the app by creating a minimal `docker-compose.yml` locally:
+
+```yaml
+version: "3.9"
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: asb
+      POSTGRES_PASSWORD: asb
+      POSTGRES_DB: asbdb
+    volumes:
+      - asbpgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U asb -d asbdb"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  web:
+    image: anilkerai/vibes-asb-manager-web:latest
+    pull_policy: always
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__asbdb: Host=db;Port=5432;Username=asb;Password=asb;Database=asbdb
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+
+volumes:
+  asbpgdata:
+```
+
+Then run:
+
+```bash
+docker compose up -d
+```
+
+This starts Postgres and pulls the latest published image of the app — no source required.
+
+---
+
+## CI/CD: Build and publish Docker images
+
+This repo includes a GitHub Actions workflow at `.github/workflows/docker.yml` that builds multi-arch images and publishes to Docker Hub.
+
+### Configure repository secrets
+
+Set the following GitHub repository secrets:
+
+- `DOCKERHUB_USERNAME` — your Docker Hub username (e.g., `anilkerai`).
+- `DOCKERHUB_TOKEN` — a Docker Hub Access Token for that account.
+
+### What the workflow does
+
+- Builds the Web app image using `src/Vibes.ASBManager.Web/Dockerfile`.
+- Targets multi-arch: `linux/amd64, linux/arm64`.
+- Publishes to `anilkerai/vibes-asb-manager-web` with tags:
+  - On pushes to `main`: `main` and a short SHA tag (`sha-xxxxxxx`).
+  - On tags like `v1.2.3`: `1.2.3`, `1.2`, and `latest`.
+  - Manual runs via `workflow_dispatch` are supported.
+
+### Releasing a new version
+
+1. Merge to `main` or create a Git tag:
+   ```bash
+   git tag v1.2.3 && git push origin v1.2.3
+   ```
+2. The workflow will build and push multi-arch images.
+3. Update your Compose file to pin to that version (recommended):
+   ```yaml
+   web:
+     image: anilkerai/vibes-asb-manager-web:1.2.3
+     pull_policy: always
+   ```
+
+Pinning a version ensures reproducible environments. Use `:latest` for always-up-to-date dev environments.
 # Vibes ASB Manager
 
 A Blazor Server tool for developers to explore and manage Azure Service Bus namespaces.
@@ -32,13 +115,13 @@ DOTNET_CLI_TELEMETRY_OPTOUT=1 dotnet run -p src/Vibes.ASBManager.AppHost
 
 ---
 
-## Option B: Run with Docker Compose
+## Option B: Run with Docker Compose (uses published image)
 
-This uses `docker-compose.yml` to run Postgres + the Web app. No .NET Aspire required.
+This uses `docker-compose.yml` to run Postgres + the Web app. No .NET Aspire required. The `web` service pulls the published image `anilkerai/vibes-asb-manager-web:latest`.
 
 ```bash
 # from repo root
-docker compose up --build
+docker compose up -d
 # app will be available at http://localhost:8080
 ```
 
@@ -51,7 +134,23 @@ Reset data (Compose):
 docker compose down -v  # drops containers and the asbpgdata volume
 ```
 
----
+### Pin to a specific image version with .env
+
+You can control which image tag Compose pulls without editing YAML using a `.env` file (already git-ignored).
+
+1) Create a `.env` file in the repo root with the tag you want:
+
+```env
+WEB_IMAGE=anilkerai/vibes-asb-manager-web:1.2.3
+```
+
+2) Start Compose as usual:
+
+```bash
+docker compose up -d
+```
+
+Compose will substitute `WEB_IMAGE` into `docker-compose.yml` (`image: ${WEB_IMAGE:-anilkerai/vibes-asb-manager-web:latest}`), so teams can pin versions consistently without changing the YAML.
 
 ## Option C: Run the Web app against your own Postgres
 
