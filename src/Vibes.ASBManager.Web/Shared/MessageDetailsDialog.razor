@@ -1,4 +1,6 @@
 @inherits ComponentBase
+@using System.Text.Json
+@using System.Xml.Linq
 
 <MudDialog>
     <DialogContent>
@@ -56,8 +58,20 @@
             </MudItem>
         </MudGrid>
 
-        <MudText Typo="Typo.subtitle2" Class="mt-1">Application Properties</MudText>
-        <KeyValueEditor @bind-Value="_propertyDict" ReadOnly="@(!IsDeadLetter)" />
+        <MudExpansionPanels Elevation="1" Class="mt-1">
+            <MudExpansionPanel Text="Application Properties" Expanded="true">
+                <div class="d-flex justify-end mb-1">
+                    <MudButton Variant="Variant.Text" Size="Size.Small" StartIcon="@Icons.Material.Filled.ContentCopy" OnClick="@CopyAppPropsAsJsonAsync">Copy JSON</MudButton>
+                </div>
+                <KeyValueEditor @bind-Value="_propertyDict" ReadOnly="@(!IsDeadLetter)" />
+            </MudExpansionPanel>
+            <MudExpansionPanel Text="System Properties" Expanded="false">
+                <div class="d-flex justify-end mb-1">
+                    <MudButton Variant="Variant.Text" Size="Size.Small" StartIcon="@Icons.Material.Filled.ContentCopy" OnClick="@CopySystemPropsAsJsonAsync">Copy JSON</MudButton>
+                </div>
+                <KeyValueEditor Value="_systemPropDict" ReadOnly="true" />
+            </MudExpansionPanel>
+        </MudExpansionPanels>
         @if (IsDeadLetter)
         {
             <MudDivider Class="my-2" />
@@ -94,12 +108,14 @@
 
     [Inject] private IServiceBusMessaging Messaging { get; set; } = default!;
     [Inject] private ISnackbar Snackbar { get; set; } = default!;
+    [Inject] private IJSRuntime JS { get; set; } = default!;
 
     private bool _initialized;
     private string _bodyEdit = string.Empty;
     private string? _subjectEdit;
     private string? _correlationIdEdit;
     private Dictionary<string, string> _propertyDict = new();
+    private Dictionary<string, string> _systemPropDict = new();
     private bool _submitting;
     private string? _contentTypeEdit;
     private string? _messageIdEdit;
@@ -122,6 +138,8 @@
             _messageIdEdit = Details.MessageId;
             _propertyDict = Details.ApplicationProperties?.ToDictionary(kv => kv.Key, kv => kv.Value?.ToString() ?? string.Empty)
                            ?? new Dictionary<string, string>(StringComparer.Ordinal);
+            TryFormatBodyForDisplay();
+            BuildSystemProps();
         }
     }
 
@@ -187,4 +205,95 @@
     }
 
     // Property editing is handled by KeyValueEditor
+
+    private void TryFormatBodyForDisplay()
+    {
+        if (string.IsNullOrWhiteSpace(_bodyEdit)) return;
+        try
+        {
+            if (LooksLikeJson(_bodyEdit))
+            {
+                using var doc = JsonDocument.Parse(_bodyEdit);
+                _bodyEdit = JsonSerializer.Serialize(doc, new JsonSerializerOptions { WriteIndented = true });
+                return;
+            }
+            if (LooksLikeXml(_bodyEdit))
+            {
+                var x = XDocument.Parse(_bodyEdit);
+                _bodyEdit = x.ToString(SaveOptions.None);
+                return;
+            }
+        }
+        catch { /* ignore formatting issues */ }
+    }
+
+    private bool LooksLikeJson(string s)
+    {
+        var t = s?.TrimStart();
+        return !string.IsNullOrEmpty(t) && (t.StartsWith("{") || t.StartsWith("[") || (_contentTypeEdit?.Contains("json", StringComparison.OrdinalIgnoreCase) == true));
+    }
+
+    private bool LooksLikeXml(string s)
+    {
+        var t = s?.TrimStart();
+        return !string.IsNullOrEmpty(t) && (t.StartsWith("<") || (_contentTypeEdit?.Contains("xml", StringComparison.OrdinalIgnoreCase) == true));
+    }
+
+    private void BuildSystemProps()
+    {
+        var dict = new Dictionary<string, string>(StringComparer.Ordinal);
+        void Add(string k, string? v)
+        {
+            if (!string.IsNullOrWhiteSpace(v)) dict[k] = v;
+        }
+
+        Add("Sequence Number", Details.SequenceNumber.ToString());
+        Add("Enqueued", FormatDate(Details.EnqueuedTime));
+        if (Details.ExpiresAt is { } exp) Add("Expires At", FormatDate(exp));
+        if (Details.ScheduledEnqueueTime is { } sch) Add("Scheduled Enqueue", FormatDate(sch));
+        Add("Delivery Count", Details.DeliveryCount.ToString());
+        Add("MessageId", _messageIdEdit);
+        Add("Subject", _subjectEdit);
+        Add("CorrelationId", _correlationIdEdit);
+        Add("Content Type", _contentTypeEdit);
+        Add("To", Details.To);
+        Add("ReplyTo", Details.ReplyTo);
+        Add("SessionId", Details.SessionId);
+        Add("PartitionKey", Details.PartitionKey);
+        Add("ReplyToSessionId", Details.ReplyToSessionId);
+        Add("Time To Live", Details.TimeToLive.ToString());
+        Add("DeadLetterSource", Details.DeadLetterSource);
+        Add("DeadLetterReason", Details.DeadLetterReason);
+        Add("DeadLetterErrorDescription", Details.DeadLetterErrorDescription);
+
+        _systemPropDict = dict;
+    }
+
+    private async Task CopyAppPropsAsJsonAsync()
+    {
+        try
+        {
+            var json = JsonSerializer.Serialize(_propertyDict ?? new Dictionary<string, string>(), new JsonSerializerOptions { WriteIndented = true });
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", json);
+            Snackbar.Add("Application properties copied to clipboard.", Severity.Success);
+        }
+        catch
+        {
+            Snackbar.Add("Failed to copy application properties.", Severity.Error);
+        }
+    }
+
+    private async Task CopySystemPropsAsJsonAsync()
+    {
+        try
+        {
+            var json = JsonSerializer.Serialize(_systemPropDict ?? new Dictionary<string, string>(), new JsonSerializerOptions { WriteIndented = true });
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", json);
+            Snackbar.Add("System properties copied to clipboard.", Severity.Success);
+        }
+        catch
+        {
+            Snackbar.Add("Failed to copy system properties.", Severity.Error);
+        }
+    }
 }
