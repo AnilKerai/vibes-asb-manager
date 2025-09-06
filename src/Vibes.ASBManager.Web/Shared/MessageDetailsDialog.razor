@@ -38,7 +38,9 @@
         <MudText Typo="Typo.subtitle1" Class="mt-2">Message</MudText>
         <MudGrid Class="mb-2">
             <MudItem xs="12">
-                <MudTextField T="string" Label="Body" Lines="8" FullWidth="true" @bind-Value="_bodyEdit" ReadOnly="@(!IsDeadLetter)" tabindex="1" />
+                @* Old body input replaced by CodeEditor for better JSON/XML editing *@
+                @* <MudTextField T="string" Label="Body" Lines="8" FullWidth="true" @bind-Value="_bodyEdit" ReadOnly="@(!IsDeadLetter)" tabindex="1" /> *@
+                <CodeEditor @bind-Value="_bodyEdit" ContentType="_contentTypeEdit" Lines="14" Placeholder="Body" ReadOnly="@(!IsDeadLetter)" />
             </MudItem>
             <MudItem xs="12" md="6">
                 <MudTextField T="string" Label="Subject" @bind-Value="_subjectEdit" ReadOnly="@(!IsDeadLetter)" tabindex="2" />

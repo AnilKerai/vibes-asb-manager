@@ -1,0 +1,141 @@
+@using System.Text.Json
+@using System.Xml.Linq
+
+<MudStack Spacing="1">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+        <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="@FormatContent" Disabled="@ReadOnly">
+            <MudIcon Icon="@Icons.Material.Filled.FormatAlignLeft" />
+            <span class="ml-1">Format</span>
+        </MudButton>
+        <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="@MinifyContent" Disabled="@ReadOnly">
+            <MudIcon Icon="@Icons.Material.Filled.DataObject" />
+            <span class="ml-1">Minify</span>
+        </MudButton>
+        <MudSwitch T="bool" @bind-Value="_wrap" Color="Color.Primary" Class="ml-2">Wrap</MudSwitch>
+        <MudSpacer />
+        @if (!string.IsNullOrWhiteSpace(ContentType))
+        {
+            <MudChip T="string" Color="Color.Info" Variant="Variant.Outlined" Size="Size.Small">@ContentType</MudChip>
+        }
+    </MudStack>
+
+    <div class="code-editor-container">
+        <textarea class="code-editor-textarea"
+                  placeholder="@Placeholder"
+                  value="@_text"
+                  rows="@Lines"
+                  @oninput="OnInput"
+                  readonly="@ReadOnly"
+                  style="white-space:@(_wrap ? "pre-wrap" : "pre");"></textarea>
+    </div>
+</MudStack>
+
+@code {
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+
+    [Parameter] public string? ContentType { get; set; }
+    [Parameter] public string? Placeholder { get; set; }
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public bool ReadOnly { get; set; }
+    [Parameter] public int Lines { get; set; } = 12;
+
+    private string _text = string.Empty;
+    private bool _wrap = true;
+
+    protected override void OnParametersSet()
+    {
+        var incoming = Value ?? string.Empty;
+        if (!string.Equals(incoming, _text, StringComparison.Ordinal))
+        {
+            _text = incoming;
+        }
+    }
+
+    private async Task OnInput(ChangeEventArgs e)
+    {
+        _text = e?.Value?.ToString() ?? string.Empty;
+        await ValueChanged.InvokeAsync(_text);
+    }
+
+    private bool LooksLikeJson(string s)
+    {
+        var t = s.TrimStart();
+        return t.StartsWith("{") || t.StartsWith("[") || (ContentType?.Contains("json", StringComparison.OrdinalIgnoreCase) == true);
+    }
+
+    private bool LooksLikeXml(string s)
+    {
+        var t = s.TrimStart();
+        return t.StartsWith("<") || (ContentType?.Contains("xml", StringComparison.OrdinalIgnoreCase) == true);
+    }
+
+    private async Task FormatContent()
+    {
+        if (string.IsNullOrWhiteSpace(_text)) return;
+        try
+        {
+            if (LooksLikeJson(_text))
+            {
+                using var doc = JsonDocument.Parse(_text);
+                _text = JsonSerializer.Serialize(doc, new JsonSerializerOptions { WriteIndented = true });
+            }
+            else if (LooksLikeXml(_text))
+            {
+                var x = XDocument.Parse(_text);
+                _text = x.ToString(SaveOptions.None);
+            }
+            await ValueChanged.InvokeAsync(_text);
+        }
+        catch
+        {
+            // ignore formatting errors
+        }
+    }
+
+    private async Task MinifyContent()
+    {
+        if (string.IsNullOrWhiteSpace(_text)) return;
+        try
+        {
+            if (LooksLikeJson(_text))
+            {
+                using var doc = JsonDocument.Parse(_text);
+                _text = JsonSerializer.Serialize(doc, new JsonSerializerOptions { WriteIndented = false });
+            }
+            else if (LooksLikeXml(_text))
+            {
+                var x = XDocument.Parse(_text, LoadOptions.PreserveWhitespace);
+                _text = x.ToString(SaveOptions.DisableFormatting);
+            }
+            await ValueChanged.InvokeAsync(_text);
+        }
+        catch
+        {
+            // ignore minify errors
+        }
+    }
+}
+
+<style>
+.code-editor-container {
+    border: 1px solid var(--mud-palette-lines-default);
+    border-radius: 4px;
+}
+.code-editor-textarea {
+    width: 100%;
+    box-sizing: border-box;
+    border: none;
+    outline: none;
+    resize: vertical;
+    font-family: var(--mud-typography-monospace-font-family, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);
+    font-size: 0.875rem;
+    line-height: 1.4;
+    padding: 12px;
+    background-color: var(--mud-palette-surface);
+    color: var(--mud-palette-text-primary);
+}
+.code-editor-textarea:read-only {
+    background-color: var(--mud-palette-background);
+}
+</style>

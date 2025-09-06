@@ -1,4 +1,5 @@
 @using Vibes.ASBManager.Web.Models
+@inject ISnackbar Snackbar
 <MudDialog>
     <TitleContent>@Title</TitleContent>
     <DialogContent>
@@ -6,7 +7,7 @@
             <MudTextField T="string" Label="Subject" @bind-Value="Model.Subject" tabindex="1" />
             <MudTextField T="string" Label="Correlation Id" @bind-Value="Model.CorrelationId" tabindex="2" />
             <MudAutocomplete T="string" Label="Content Type" @bind-Value="Model.ContentType" SearchFunc="SearchContentTypes" Clearable="true" tabindex="3" />
-            <MudTextField T="string" Label="Body" @bind-Value="Model.Body" Lines="6" Required="true" tabindex="4" />
+            <CodeEditor @bind-Value="Model.Body" ContentType="Model.ContentType" Lines="12" Placeholder="Body" />
             <MudTextField T="string" Label="Properties (one per line: key=value)" @bind-Value="_propertiesText" Lines="4" tabindex="5" />
             <MudNumericField T="int" Label="Count" @bind-Value="Model.Count" Min="1" Max="1000" Immediate="true" tabindex="6" />
             <MudNumericField T="int" Label="Interval (seconds; 0 for none)" @bind-Value="Model.IntervalSeconds" Min="0" Max="3600" Immediate="true" tabindex="7" />
@@ -68,6 +69,12 @@
             await _form.Validate();
             if (!_form.IsValid)
                 return;
+        }
+
+        if (string.IsNullOrWhiteSpace(Model.Body))
+        {
+            Snackbar.Add("Body is required.", Severity.Warning);
+            return;
         }
 
         // Parse properties
