@@ -550,14 +550,29 @@
             {
                 for (var i = 0; i < count; i++)
                 {
-                    await Messaging.SendToQueueAsync(_connectionString, queueName, req.Body, req.Subject, req.CorrelationId, req.Properties, contentType);
+                    DateTimeOffset? sched = req.ScheduledEnqueueUtc;
+                    if (sched.HasValue && req.IntervalSeconds > 0)
+                    {
+                        sched = sched.Value.AddSeconds(req.IntervalSeconds * i);
+                    }
+                    await Messaging.SendToQueueAsync(
+                        connectionString: _connectionString,
+                        queueName: queueName,
+                        body: req.Body,
+                        subject: req.Subject,
+                        correlationId: req.CorrelationId,
+                        properties: req.Properties,
+                        contentType: contentType,
+                        messageId: null,
+                        scheduledEnqueueTime: sched);
                     sent++;
-                    if (req.IntervalSeconds > 0 && i < count - 1)
+                    if (!req.ScheduledEnqueueUtc.HasValue && req.IntervalSeconds > 0 && i < count - 1)
                     {
                         try { await Task.Delay(TimeSpan.FromSeconds(req.IntervalSeconds)); } catch { }
                     }
                 }
-                Snackbar.Add(sent == 1 ? $"Sent 1 message to {queueName}." : $"Sent {sent} messages to {queueName}.", Severity.Success);
+                var verb = req.ScheduledEnqueueUtc.HasValue ? "Scheduled" : "Sent";
+                Snackbar.Add(sent == 1 ? $"{verb} 1 message to {queueName}." : $"{verb} {sent} messages to {queueName}.", Severity.Success);
                 if (CanRefreshMessages)
                 {
                     await RefreshActiveAsync();
@@ -593,14 +608,29 @@
             {
                 for (var i = 0; i < count; i++)
                 {
-                    await Messaging.SendToTopicAsync(_connectionString, topicName, req.Body, req.Subject, req.CorrelationId, req.Properties, contentType);
+                    DateTimeOffset? sched = req.ScheduledEnqueueUtc;
+                    if (sched.HasValue && req.IntervalSeconds > 0)
+                    {
+                        sched = sched.Value.AddSeconds(req.IntervalSeconds * i);
+                    }
+                    await Messaging.SendToTopicAsync(
+                        connectionString: _connectionString,
+                        topicName: topicName,
+                        body: req.Body,
+                        subject: req.Subject,
+                        correlationId: req.CorrelationId,
+                        properties: req.Properties,
+                        contentType: contentType,
+                        messageId: null,
+                        scheduledEnqueueTime: sched);
                     sent++;
-                    if (req.IntervalSeconds > 0 && i < count - 1)
+                    if (!req.ScheduledEnqueueUtc.HasValue && req.IntervalSeconds > 0 && i < count - 1)
                     {
                         try { await Task.Delay(TimeSpan.FromSeconds(req.IntervalSeconds)); } catch { }
                     }
                 }
-                Snackbar.Add(sent == 1 ? $"Sent 1 message to {topicName}." : $"Sent {sent} messages to {topicName}.", Severity.Success);
+                var verb = req.ScheduledEnqueueUtc.HasValue ? "Scheduled" : "Sent";
+                Snackbar.Add(sent == 1 ? $"{verb} 1 message to {topicName}." : $"{verb} {sent} messages to {topicName}.", Severity.Success);
                 if (CanRefreshMessages)
                 {
                     await RefreshActiveAsync();

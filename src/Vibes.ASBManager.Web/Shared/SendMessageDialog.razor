@@ -10,6 +10,20 @@
             <CodeEditor @bind-Value="Model.Body" ContentType="Model.ContentType" Lines="12" Placeholder="Body" />
             <MudText Typo="Typo.subtitle2" Class="mt-2">Application Properties</MudText>
             <KeyValueEditor @bind-Value="Model.Properties" />
+
+            <MudDivider Class="my-2" />
+            <MudText Typo="Typo.subtitle2">Schedule (optional)</MudText>
+            <MudSwitch T="bool" Checked="@_useSchedule" ValueChanged="OnScheduleChanged" Color="Color.Primary" Label="Schedule for later" />
+            @if (_useSchedule)
+            {
+                <MudStack Row="true" Spacing="2">
+                    <MudDatePicker Label="Date (local)" @bind-Date="_scheduleDate" Editable="true" Clearable="true" />
+                    <MudTimePicker Label="Time (local)" @bind-Time="_scheduleTime" AmPm="false" Editable="true" Clearable="true" />
+                </MudStack>
+                <MudText Typo="Typo.caption">Times are treated as your local timezone and converted to UTC when sending.</MudText>
+                <MudText Typo="Typo.caption" Class="mt-1">@GetSchedulePreview()</MudText>
+            }
+
             <MudNumericField T="int" Label="Count" @bind-Value="Model.Count" Min="1" Max="1000" Immediate="true" tabindex="6" />
             <MudNumericField T="int" Label="Interval (seconds; 0 for none)" @bind-Value="Model.IntervalSeconds" Min="0" Max="3600" Immediate="true" tabindex="7" />
         </MudForm>
@@ -31,6 +45,9 @@
     [Parameter] public string Title { get; set; } = "Send Message(s)";
 
     private MudForm? _form;
+    private bool _useSchedule;
+    private DateTime? _scheduleDate;
+    private TimeSpan? _scheduleTime;
 
     public SendMessageRequest Model { get; set; } = new();
 
@@ -77,10 +94,73 @@
             return;
         }
 
+        // Compute scheduled time only when toggle is ON
+        Model.ScheduledEnqueueUtc = null;
+        if (_useSchedule)
+        {
+            if (!_scheduleDate.HasValue || !_scheduleTime.HasValue)
+            {
+                Snackbar.Add("Please select both schedule date and time.", Severity.Warning);
+                return;
+            }
+            try
+            {
+                var d = _scheduleDate.Value.Date;
+                var t = _scheduleTime.Value;
+                var local = new DateTime(d.Year, d.Month, d.Day, t.Hours, t.Minutes, t.Seconds, DateTimeKind.Local);
+                var dtoLocal = new DateTimeOffset(local);
+                var utc = dtoLocal.ToUniversalTime();
+                if (utc <= DateTimeOffset.UtcNow.AddSeconds(5))
+                {
+                    Snackbar.Add("Scheduled time must be in the future.", Severity.Warning);
+                    return;
+                }
+                Model.ScheduledEnqueueUtc = utc;
+                Snackbar.Add($"Scheduling for {local:G} (local)", Severity.Info);
+            }
+            catch
+            {
+                Snackbar.Add("Invalid schedule values.", Severity.Error);
+                return;
+            }
+        }
+
         // Properties are already bound via KeyValueEditor to Model.Properties
 
         MudDialog?.Close(DialogResult.Ok(Model));
     }
 
     private void OnCancel() => MudDialog?.Cancel();
+
+    private void OnScheduleChanged(bool value)
+    {
+        _useSchedule = value;
+        if (value)
+        {
+            _scheduleDate ??= DateTime.Today;
+            if (!_scheduleTime.HasValue)
+            {
+                var now = DateTime.Now.AddMinutes(5);
+                _scheduleTime = new TimeSpan(now.Hour, now.Minute, 0);
+            }
+        }
+        StateHasChanged();
+    }
+
+    private string GetSchedulePreview()
+    {
+        if (!_scheduleDate.HasValue || !_scheduleTime.HasValue) return "No schedule set.";
+        try
+        {
+            var d = _scheduleDate.Value.Date;
+            var t = _scheduleTime.Value;
+            var local = new DateTime(d.Year, d.Month, d.Day, t.Hours, t.Minutes, t.Seconds, DateTimeKind.Local);
+            var utc = new DateTimeOffset(local).ToUniversalTime();
+            return $"Will schedule at {local:G} (local), {utc:u} UTC.";
+        }
+        catch
+        {
+            return "Invalid schedule.";
+        }
+    }
 }

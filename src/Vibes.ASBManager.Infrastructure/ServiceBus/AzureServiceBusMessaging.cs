@@ -86,7 +86,7 @@ public sealed class AzureServiceBusMessaging : IServiceBusMessaging
             .ToList();
     }
 
-    public async Task SendToQueueAsync(string connectionString, string queueName, string body, string? subject = null, string? correlationId = null, IDictionary<string, string>? properties = null, string? contentType = null, string? messageId = null, CancellationToken ct = default)
+    public async Task SendToQueueAsync(string connectionString, string queueName, string body, string? subject = null, string? correlationId = null, IDictionary<string, string>? properties = null, string? contentType = null, string? messageId = null, DateTimeOffset? scheduledEnqueueTime = null, CancellationToken ct = default)
     {
         await using var client = new ServiceBusClient(connectionString);
         var sender = client.CreateSender(queueName);
@@ -105,11 +105,18 @@ public sealed class AzureServiceBusMessaging : IServiceBusMessaging
             foreach (var kvp in properties)
                 message.ApplicationProperties[kvp.Key] = kvp.Value;
         }
-        await sender.SendMessageAsync(message, ct).ConfigureAwait(false);
+        if (scheduledEnqueueTime.HasValue && scheduledEnqueueTime.Value > DateTimeOffset.UtcNow)
+        {
+            await sender.ScheduleMessageAsync(message, scheduledEnqueueTime.Value, ct).ConfigureAwait(false);
+        }
+        else
+        {
+            await sender.SendMessageAsync(message, ct).ConfigureAwait(false);
+        }
         await sender.DisposeAsync();
     }
 
-    public async Task SendToTopicAsync(string connectionString, string topicName, string body, string? subject = null, string? correlationId = null, IDictionary<string, string>? properties = null, string? contentType = null, string? messageId = null, CancellationToken ct = default)
+    public async Task SendToTopicAsync(string connectionString, string topicName, string body, string? subject = null, string? correlationId = null, IDictionary<string, string>? properties = null, string? contentType = null, string? messageId = null, DateTimeOffset? scheduledEnqueueTime = null, CancellationToken ct = default)
     {
         await using var client = new ServiceBusClient(connectionString);
         var sender = client.CreateSender(topicName);
@@ -128,7 +135,14 @@ public sealed class AzureServiceBusMessaging : IServiceBusMessaging
             foreach (var kvp in properties)
                 message.ApplicationProperties[kvp.Key] = kvp.Value;
         }
-        await sender.SendMessageAsync(message, ct).ConfigureAwait(false);
+        if (scheduledEnqueueTime.HasValue && scheduledEnqueueTime.Value > DateTimeOffset.UtcNow)
+        {
+            await sender.ScheduleMessageAsync(message, scheduledEnqueueTime.Value, ct).ConfigureAwait(false);
+        }
+        else
+        {
+            await sender.SendMessageAsync(message, ct).ConfigureAwait(false);
+        }
         await sender.DisposeAsync();
     }
 
