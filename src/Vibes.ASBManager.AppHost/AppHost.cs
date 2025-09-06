@@ -4,7 +4,8 @@ var builder = DistributedApplication.CreateBuilder(args);
 var postgres = 
        builder
               .AddPostgres("postgres")
-              .WithDataVolume();
+              .WithDataVolume()
+              ;
 var asbdb = 
        postgres
               .AddDatabase("asbdb");
