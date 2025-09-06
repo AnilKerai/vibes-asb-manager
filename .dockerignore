@@ -1,0 +1,27 @@
+# Ignore Git and IDE files
+.git
+.gitignore
+.vs
+.idea
+.vscode
+*.user
+*.suo
+.DS_Store
+
+# Build outputs
+bin
+obj
+**/bin/
+**/obj/
+
+# Node/Frontend (in case added later)
+node_modules
+**/node_modules/
+
+# Publish artifacts
+**/publish/
+**/dist/
+
+# Test artifacts
+TestResults
+coverage

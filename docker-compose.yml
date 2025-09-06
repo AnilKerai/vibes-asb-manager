@@ -1,0 +1,36 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16
+    container_name: asbmanager-db
+    environment:
+      POSTGRES_USER: asb
+      POSTGRES_PASSWORD: asb
+      POSTGRES_DB: asbdb
+    volumes:
+      - asbpgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U asb -d asbdb"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  web:
+    build:
+      context: .
+      dockerfile: src/Vibes.ASBManager.Web/Dockerfile
+    container_name: asbmanager-web
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      # Resolve Postgres by Compose service name 'db'
+      ConnectionStrings__asbdb: Host=db;Port=5432;Username=asb;Password=asb;Database=asbdb
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+
+volumes:
+  asbpgdata:
