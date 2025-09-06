@@ -1,0 +1,46 @@
+@using Vibes.ASBManager.Application.Models
+
+<MudTreeView T="string" SelectedValue="@SelectedValue" SelectedValueChanged="@OnSelectedChanged">
+    <MudTreeViewItem T="string" Text="Namespace" Value="@("root")" Icon="@Icons.Material.Filled.Hub" />
+    <MudTreeViewItem T="string" Text="Queues" Value="@("queues")" Icon="@Icons.Material.Filled.Queue" Expanded="@QueuesExpanded">
+        @if (Queues is not null)
+        {
+            foreach (var q in Queues)
+            {
+                <MudTreeViewItem T="string" Text="@q.Name" Value="@($"queue:{q.Name}")" Icon="@Icons.Material.Filled.Inbox" />
+            }
+        }
+    </MudTreeViewItem>
+    <MudTreeViewItem T="string" Text="Topics" Value="@("topics")" Icon="@Icons.Material.Filled.Topic" Expanded="@TopicsExpanded">
+        @if (Topics is not null)
+        {
+            foreach (var t in Topics)
+            {
+                <MudTreeViewItem T="string" Text="@t.Name" Value="@($"topic:{t.Name}")" Icon="@Icons.Material.Filled.Topic" Expanded="@ExpandedTopicNames.Contains(t.Name)">
+                    @if (TopicSubscriptions.TryGetValue(t.Name, out var subs) && subs is not null)
+                    {
+                        foreach (var s in subs)
+                        {
+                            <MudTreeViewItem T="string" Text="@s.SubscriptionName" Value="@($"subscription:{t.Name}/{s.SubscriptionName}")" Icon="@Icons.Material.Filled.Mail" />
+                        }
+                    }
+                </MudTreeViewItem>
+            }
+        }
+    </MudTreeViewItem>
+</MudTreeView>
+
+@code {
+    [Parameter] public string? SelectedValue { get; set; }
+    [Parameter] public EventCallback<string?> SelectedValueChanged { get; set; }
+
+    [Parameter] public IReadOnlyList<QueueSummary>? Queues { get; set; }
+    [Parameter] public IReadOnlyList<TopicSummary>? Topics { get; set; }
+    [Parameter] public Dictionary<string, IReadOnlyList<SubscriptionSummary>> TopicSubscriptions { get; set; } = new();
+
+    [Parameter] public bool QueuesExpanded { get; set; }
+    [Parameter] public bool TopicsExpanded { get; set; }
+    [Parameter] public HashSet<string> ExpandedTopicNames { get; set; } = new();
+
+    private Task OnSelectedChanged(string? value) => SelectedValueChanged.InvokeAsync(value);
+}

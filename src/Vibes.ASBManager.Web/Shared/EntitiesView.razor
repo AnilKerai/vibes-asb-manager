@@ -26,121 +26,44 @@
         <MudItem xs="12" md="3">
             <MudPaper Outlined="true" Class="pa-3">
                 <MudText Typo="Typo.subtitle1" Class="mb-2">Service Bus</MudText>
-                <MudTreeView T="string" SelectedValue="_selectedTreeValue" SelectedValueChanged="OnTreeSelectionChanged">
-                    <MudTreeViewItem T="string" Text="Namespace" Value="@("root")" Icon="@Icons.Material.Filled.Hub" />
-                    <MudTreeViewItem T="string" Text="Queues" Value="@("queues")" Icon="@Icons.Material.Filled.Queue" Expanded="@_queuesExpanded">
-                        @if (_queues is not null)
-                        {
-                            foreach (var q in _queues)
-                            {
-                                <MudTreeViewItem T="string" Text="@q.Name" Value="@($"queue:{q.Name}")" Icon="@Icons.Material.Filled.Inbox" />
-                            }
-                        }
-                    </MudTreeViewItem>
-                    <MudTreeViewItem T="string" Text="Topics" Value="@("topics")" Icon="@Icons.Material.Filled.Topic" Expanded="@_topicsExpanded">
-                        @if (_topics is not null)
-                        {
-                            foreach (var t in _topics)
-                            {
-                                <MudTreeViewItem T="string" Text="@t.Name" Value="@($"topic:{t.Name}")" Icon="@Icons.Material.Filled.Topic" Expanded="@(_expandedTopicNames.Contains(t.Name))">
-                                    @if (_topicSubscriptions.TryGetValue(t.Name, out var subs) && subs is not null)
-                                    {
-                                        foreach (var s in subs)
-                                        {
-                                            <MudTreeViewItem T="string" Text="@s.SubscriptionName" Value="@($"subscription:{t.Name}/{s.SubscriptionName}")" Icon="@Icons.Material.Filled.Mail" />
-                                        }
-                                    }
-                                </MudTreeViewItem>
-                            }
-                        }
-                    </MudTreeViewItem>
-                </MudTreeView>
+                <ServiceBusTree
+                    SelectedValue="@_selectedTreeValue"
+                    SelectedValueChanged="@OnTreeSelectionChanged"
+                    Queues="@_queues"
+                    Topics="@_topics"
+                    TopicSubscriptions="@_topicSubscriptions"
+                    QueuesExpanded="@_queuesExpanded"
+                    TopicsExpanded="@_topicsExpanded"
+                    ExpandedTopicNames="@_expandedTopicNames" />
             </MudPaper>
         </MudItem>
 
         <MudItem xs="12" md="9">
-            <MudPaper Class="pa-2 mb-2 d-flex align-center" Elevation="1" Style="gap:8px;">
-                <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!CanLoad)" OnClick="@RefreshEntities">
-                    <MudIcon Icon="@Icons.Material.Filled.Refresh" />
-                    <span class="ms-1">Refresh</span>
-                </MudButton>
-
-                <MudDivider Vertical="true" Class="mx-2" />
-
-                <MudButton Variant="Variant.Outlined" Disabled="@(!CanSend)" OnClick="@SendToSelected">
-                    <MudIcon Icon="@Icons.Material.Filled.Send" />
-                    <span class="ms-1">Send Message(s)</span>
-                </MudButton>
-                <MudButton Variant="Variant.Outlined" Color="Color.Error" Disabled="@(!CanPurgeActive)" OnClick="@PurgeActiveSelected">
-                    <MudIcon Icon="@Icons.Material.Filled.DeleteSweep" />
-                    <span class="ms-1">Purge Active</span>
-                </MudButton>
-                <MudButton Variant="Variant.Outlined" Color="Color.Error" Disabled="@(!CanPurgeDlq)" OnClick="@PurgeDlqSelected">
-                    <MudIcon Icon="@Icons.Material.Filled.DeleteForever" />
-                    <span class="ms-1">Purge DLQ</span>
-                </MudButton>
-
-                @if (HasConnection && (SelectedIsRoot || SelectedIsQueuesFolder || SelectedIsTopicsFolder))
-                {
-                    @if (SelectedIsRoot)
-                    {
-                        <MudButton Variant="Variant.Outlined" OnClick="@CreateQueueAsync">
-                            <MudIcon Icon="@Icons.Material.Filled.Add" />
-                            <span class="ms-1">New Queue</span>
-                        </MudButton>
-                        <MudButton Variant="Variant.Outlined" OnClick="@CreateTopicAsync">
-                            <MudIcon Icon="@Icons.Material.Filled.Add" />
-                            <span class="ms-1">New Topic</span>
-                        </MudButton>
-                    }
-                    else if (SelectedIsQueuesFolder)
-                    {
-                        <MudButton Variant="Variant.Outlined" OnClick="@CreateQueueAsync">
-                            <MudIcon Icon="@Icons.Material.Filled.Add" />
-                            <span class="ms-1">New Queue</span>
-                        </MudButton>
-                    }
-                    else if (SelectedIsTopicsFolder)
-                    {
-                        <MudButton Variant="Variant.Outlined" OnClick="@CreateTopicAsync">
-                            <MudIcon Icon="@Icons.Material.Filled.Add" />
-                            <span class="ms-1">New Topic</span>
-                        </MudButton>
-                    }
-                }
-                @if (SelectedIsQueue)
-                {
-                    <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="@DeleteSelectedQueueAsync">
-                        <MudIcon Icon="@Icons.Material.Filled.Delete" />
-                        <span class="ms-1">Delete Queue</span>
-                    </MudButton>
-                }
-                @if (SelectedIsTopic)
-                {
-                    <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="@DeleteSelectedTopicAsync">
-                        <MudIcon Icon="@Icons.Material.Filled.Delete" />
-                        <span class="ms-1">Delete Topic</span>
-                    </MudButton>
-                }
-
-                @if (SelectedIsTopic)
-                {
-                    <MudButton Variant="Variant.Outlined" Disabled="@(!CanCreateSubscriptionAction)" OnClick="@CreateSubscriptionAsync">
-                        <MudIcon Icon="@Icons.Material.Filled.Add" />
-                        <span class="ms-1">New Subscription</span>
-                    </MudButton>
-                }
-                @if (SelectedIsSubscription)
-                {
-                    <MudButton Variant="Variant.Outlined" Color="Color.Error" Disabled="@(!CanDeleteSubscriptionAction)" OnClick="@DeleteSelectedSubscriptionAsync">
-                        <MudIcon Icon="@Icons.Material.Filled.Delete" />
-                        <span class="ms-1">Delete Subscription</span>
-                    </MudButton>
-                }
-
-                <MudSpacer />
-                <MudText Typo="Typo.caption">Selected: @SelectedFriendly</MudText>
-            </MudPaper>
+            <EntitiesActionBar
+                HasConnection="@HasConnection"
+                CanLoad="@CanLoad"
+                CanSend="@CanSend"
+                CanPurgeActive="@CanPurgeActive"
+                CanPurgeDlq="@CanPurgeDlq"
+                CanCreateSubscriptionAction="@CanCreateSubscriptionAction"
+                CanDeleteSubscriptionAction="@CanDeleteSubscriptionAction"
+                SelectedIsRoot="@SelectedIsRoot"
+                SelectedIsQueuesFolder="@SelectedIsQueuesFolder"
+                SelectedIsTopicsFolder="@SelectedIsTopicsFolder"
+                SelectedIsQueue="@SelectedIsQueue"
+                SelectedIsTopic="@SelectedIsTopic"
+                SelectedIsSubscription="@SelectedIsSubscription"
+                SelectedFriendly="@SelectedFriendly"
+                OnRefresh="@RefreshEntities"
+                OnSend="@SendToSelected"
+                OnPurgeActive="@PurgeActiveSelected"
+                OnPurgeDlq="@PurgeDlqSelected"
+                OnCreateQueue="@CreateQueueAsync"
+                OnCreateTopic="@CreateTopicAsync"
+                OnCreateSubscription="@CreateSubscriptionAsync"
+                OnDeleteQueue="@DeleteSelectedQueueAsync"
+                OnDeleteTopic="@DeleteSelectedTopicAsync"
+                OnDeleteSubscription="@DeleteSelectedSubscriptionAsync" />
 
             <MudPaper Class="pa-3" Elevation="1">
                 <MudText Typo="Typo.h6">Settings</MudText>
