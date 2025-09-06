@@ -148,13 +148,13 @@
                     <MudText Typo="Typo.h6">Active Messages</MudText>
                     <MudSpacer />
                     <MudIconButton Icon="@Icons.Material.Filled.ChevronLeft" Disabled="@(_activeHistory.Count == 0 || !CanRefreshMessages)" OnClick="@OnActivePrevPage" title="Previous page" />
-                    <MudIconButton Icon="@Icons.Material.Filled.ChevronRight" Disabled="@(_activeMessages is null || _activeMessages.Count < PageSize || !CanRefreshMessages)" OnClick="@OnActiveNextPage" title="Next page" />
+                    <MudIconButton Icon="@Icons.Material.Filled.ChevronRight" Disabled="@(_activeMessages is null || _activeMessages.Count < FetchSize || !CanRefreshMessages)" OnClick="@OnActiveNextPage" title="Next page" />
                     <MudButton Variant="Variant.Outlined" Disabled="@(!CanRefreshMessages)" OnClick="@RefreshActiveAsync">
                         <MudIcon Icon="@Icons.Material.Filled.Refresh" />
                         <span class="ms-1">Refresh</span>
                     </MudButton>
                 </div>
-                <MudTable T="MessagePreview" Items="_activeMessages" Dense="true" Hover="true" RowsPerPage="10" Elevation="0" OnRowClick="OnActiveRowClick">
+                <MudTable T="MessagePreview" Items="_activeMessages" Dense="true" Hover="true" RowsPerPage="@UiRowsPerPage" Elevation="0" OnRowClick="OnActiveRowClick">
                     <HeaderContent>
                         <MudTh>Seq</MudTh>
                         <MudTh>Enqueued</MudTh>
@@ -177,13 +177,13 @@
                     <MudText Typo="Typo.h6">Dead-letter Messages</MudText>
                     <MudSpacer />
                     <MudIconButton Icon="@Icons.Material.Filled.ChevronLeft" Disabled="@(_dlqHistory.Count == 0 || !CanRefreshMessages)" OnClick="@OnDlqPrevPage" title="Previous page" />
-                    <MudIconButton Icon="@Icons.Material.Filled.ChevronRight" Disabled="@(_dlqMessages is null || _dlqMessages.Count < PageSize || !CanRefreshMessages)" OnClick="@OnDlqNextPage" title="Next page" />
+                    <MudIconButton Icon="@Icons.Material.Filled.ChevronRight" Disabled="@(_dlqMessages is null || _dlqMessages.Count < FetchSize || !CanRefreshMessages)" OnClick="@OnDlqNextPage" title="Next page" />
                     <MudButton Variant="Variant.Outlined" Disabled="@(!CanRefreshMessages)" OnClick="@RefreshDlqAsync">
                         <MudIcon Icon="@Icons.Material.Filled.Refresh" />
                         <span class="ms-1">Refresh</span>
                     </MudButton>
                 </div>
-                <MudTable T="MessagePreview" Items="_dlqMessages" Dense="true" Hover="true" RowsPerPage="10" Elevation="0" OnRowClick="OnDlqRowClick">
+                <MudTable T="MessagePreview" Items="_dlqMessages" Dense="true" Hover="true" RowsPerPage="@UiRowsPerPage" Elevation="0" OnRowClick="OnDlqRowClick">
                     <HeaderContent>
                         <MudTh>Seq</MudTh>
                         <MudTh>Dead-lettered</MudTh>
@@ -243,7 +243,8 @@
     private List<MessagePreview> _dlqMessages = new();
     private bool _refreshingActive;
     private bool _refreshingDlq;
-    private const int PageSize = 50;
+    private const int FetchSize = 50; // how many messages to fetch per API call
+    private const int UiRowsPerPage = 25; // how many rows the table shows per page
     private long? _activeAnchor;
     private long? _dlqAnchor;
     private Stack<long?> _activeHistory = new();
@@ -1339,11 +1340,11 @@
             IReadOnlyList<MessagePreview> items = Array.Empty<MessagePreview>();
             if (TryGetQueue(out var q))
             {
-                items = await Messaging.PeekQueueAsync(_connectionString!, q, maxMessages: PageSize, fromSequenceNumber: _activeAnchor);
+                items = await Messaging.PeekQueueAsync(_connectionString!, q, maxMessages: FetchSize, fromSequenceNumber: _activeAnchor);
             }
             else if (TryGetSubscription(out var t, out var s))
             {
-                items = await Messaging.PeekSubscriptionAsync(_connectionString!, t, s, maxMessages: PageSize, fromSequenceNumber: _activeAnchor);
+                items = await Messaging.PeekSubscriptionAsync(_connectionString!, t, s, maxMessages: FetchSize, fromSequenceNumber: _activeAnchor);
             }
             _activeMessages = items
                 .OrderByDescending(m => m.EnqueuedTime)
@@ -1368,11 +1369,11 @@
             IReadOnlyList<MessagePreview> items = Array.Empty<MessagePreview>();
             if (TryGetQueue(out var q))
             {
-                items = await Messaging.PeekQueueDeadLetterAsync(_connectionString!, q, maxMessages: PageSize, fromSequenceNumber: _dlqAnchor);
+                items = await Messaging.PeekQueueDeadLetterAsync(_connectionString!, q, maxMessages: FetchSize, fromSequenceNumber: _dlqAnchor);
             }
             else if (TryGetSubscription(out var t, out var s))
             {
-                items = await Messaging.PeekSubscriptionDeadLetterAsync(_connectionString!, t, s, maxMessages: PageSize, fromSequenceNumber: _dlqAnchor);
+                items = await Messaging.PeekSubscriptionDeadLetterAsync(_connectionString!, t, s, maxMessages: FetchSize, fromSequenceNumber: _dlqAnchor);
             }
             _dlqMessages = items
                 .OrderByDescending(m => m.EnqueuedTime)
@@ -1520,7 +1521,7 @@
         if (_activeMessages is null || _activeMessages.Count == 0) return;
         var minSeq = _activeMessages.Min(m => m.SequenceNumber);
         _activeHistory.Push(_activeAnchor);
-        _activeAnchor = minSeq > PageSize ? minSeq - PageSize : 0;
+        _activeAnchor = minSeq > FetchSize ? minSeq - FetchSize : 0;
         await RefreshActiveAsync();
     }
 
@@ -1544,7 +1545,7 @@
         if (_dlqMessages is null || _dlqMessages.Count == 0) return;
         var minSeq = _dlqMessages.Min(m => m.SequenceNumber);
         _dlqHistory.Push(_dlqAnchor);
-        _dlqAnchor = minSeq > PageSize ? minSeq - PageSize : 0;
+        _dlqAnchor = minSeq > FetchSize ? minSeq - FetchSize : 0;
         await RefreshDlqAsync();
     }
 
