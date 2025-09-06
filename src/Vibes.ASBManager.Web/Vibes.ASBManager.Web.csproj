@@ -14,6 +14,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Vibes.ASBManager.Application\Vibes.ASBManager.Application.csproj" />
     <ProjectReference Include="..\Vibes.ASBManager.Infrastructure\Vibes.ASBManager.Infrastructure.csproj" />
+    <ProjectReference Include="..\Vibes.ASBManager.ServiceDefaults\Vibes.ASBManager.ServiceDefaults.csproj" />
   </ItemGroup>
 
   <!-- Exclude MAUI-specific code and assets from compilation in this Blazor Server project -->
