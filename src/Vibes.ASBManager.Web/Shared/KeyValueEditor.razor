@@ -1,0 +1,130 @@
+@inherits ComponentBase
+
+<MudPaper Class="pa-2" Elevation="0">
+    <MudTable T="Row" Items="_rows" Dense="true" Hover="true" Elevation="0">
+        <HeaderContent>
+            <MudTh width="35%">Key</MudTh>
+            <MudTh>Value</MudTh>
+            <MudTh width="56px"></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>
+                <MudTextField T="string"
+                              Placeholder="key"
+                              @bind-Value="context.Key"
+                              Disabled="@ReadOnly"
+                              Immediate="true"
+                              OnBlur="@(_ => OnKeyBlur(context))"
+                              Error="@(!string.IsNullOrEmpty(context.Error))"
+                              ErrorText="@context.Error" />
+            </MudTd>
+            <MudTd>
+                <MudTextField T="string"
+                              Placeholder="value"
+                              @bind-Value="context.Value"
+                              Disabled="@ReadOnly"
+                              Immediate="true"
+                              OnBlur="@(_ => OnValueBlur(context))" />
+            </MudTd>
+            <MudTd Class="d-flex justify-end">
+                @if (!ReadOnly)
+                {
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                   Color="Color.Error"
+                                   Size="Size.Small"
+                                   OnClick="@(() => RemoveRow(context))" />
+                }
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Typo="Typo.caption" Class="ms-1">No properties</MudText>
+        </NoRecordsContent>
+    </MudTable>
+
+    @if (!ReadOnly)
+    {
+        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Add" OnClick="AddRow" Class="mt-2">Add property</MudButton>
+    }
+</MudPaper>
+
+@code {
+    [Parameter] public Dictionary<string, string> Value { get; set; } = new();
+    [Parameter] public EventCallback<Dictionary<string, string>> ValueChanged { get; set; }
+    [Parameter] public bool ReadOnly { get; set; }
+
+    private List<Row> _rows = new();
+    private Dictionary<string, string>? _lastValueRef;
+
+    protected override void OnParametersSet()
+    {
+        // Only rebuild rows when the incoming dictionary instance changes
+        if (!ReferenceEquals(Value, _lastValueRef))
+        {
+            _rows = Value?.Select(kv => new Row { Key = kv.Key, Value = kv.Value }).ToList() ?? new();
+            _lastValueRef = Value;
+            ValidateAll();
+        }
+    }
+
+    private void AddRow()
+    {
+        _rows.Add(new Row());
+        PushValue();
+    }
+
+    private void RemoveRow(Row r)
+    {
+        _rows.Remove(r);
+        PushValue();
+    }
+
+    private void OnKeyBlur(Row r)
+    {
+        ValidateRow(r);
+        PushValue();
+    }
+
+    private void OnValueBlur(Row r)
+    {
+        PushValue();
+    }
+
+    private void ValidateAll()
+    {
+        foreach (var r in _rows)
+            ValidateRow(r);
+    }
+
+    private void ValidateRow(Row r)
+    {
+        r.Error = string.Empty;
+        if (string.IsNullOrWhiteSpace(r.Key)) return; // allow empty keys; filtered out on emit
+        // duplicate check (case sensitive)
+        if (_rows.Count(x => string.Equals(x.Key, r.Key, StringComparison.Ordinal)) > 1)
+            r.Error = "Duplicate key";
+    }
+
+    private async void PushValue()
+    {
+        // build dictionary from non-empty keys; last one wins
+        var dict = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var r in _rows)
+        {
+            if (!string.IsNullOrWhiteSpace(r.Key))
+            {
+                dict[r.Key] = r.Value ?? string.Empty;
+            }
+        }
+        Value = dict;
+        _lastValueRef = dict;
+        await ValueChanged.InvokeAsync(dict);
+        StateHasChanged();
+    }
+
+    private sealed class Row
+    {
+        public string Key { get; set; } = string.Empty;
+        public string Value { get; set; } = string.Empty;
+        public string? Error { get; set; }
+    }
+}

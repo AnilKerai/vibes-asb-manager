@@ -57,26 +57,9 @@
         </MudGrid>
 
         <MudText Typo="Typo.subtitle2" Class="mt-1">Application Properties</MudText>
-        <MudTable T="PropertyRow" Items="_propertyRows" Dense="true">
-            <HeaderContent>
-                <MudTh>Key</MudTh>
-                <MudTh>Value</MudTh>
-                <MudTh></MudTh>
-            </HeaderContent>
-            <RowTemplate>
-                <MudTd><MudTextField T="string" Placeholder="key" @bind-Value="context.Key" ReadOnly="@(!IsDeadLetter)" tabindex="0" /></MudTd>
-                <MudTd><MudTextField T="string" Placeholder="value" @bind-Value="context.Value" ReadOnly="@(!IsDeadLetter)" tabindex="0" /></MudTd>
-                <MudTd Class="d-flex justify-end">
-                    @if (IsDeadLetter)
-                    {
-                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small" OnClick="@(() => RemoveProperty(context))" tabindex="0" />
-                    }
-                </MudTd>
-            </RowTemplate>
-        </MudTable>
+        <KeyValueEditor @bind-Value="_propertyDict" ReadOnly="@(!IsDeadLetter)" />
         @if (IsDeadLetter)
         {
-            <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Add" OnClick="@AddProperty" Class="mt-1" tabindex="6">Add property</MudButton>
             <MudDivider Class="my-2" />
             <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
                 <MudCheckBox T="bool" Label="Also remove original from DLQ after resubmit" @bind-Value="_removeOriginal" tabindex="7" />
@@ -116,7 +99,7 @@
     private string _bodyEdit = string.Empty;
     private string? _subjectEdit;
     private string? _correlationIdEdit;
-    private List<PropertyRow> _propertyRows = new();
+    private Dictionary<string, string> _propertyDict = new();
     private bool _submitting;
     private string? _contentTypeEdit;
     private string? _messageIdEdit;
@@ -137,9 +120,8 @@
             _correlationIdEdit = Details.CorrelationId;
             _contentTypeEdit = Details.ContentType;
             _messageIdEdit = Details.MessageId;
-            _propertyRows = Details.ApplicationProperties
-                .Select(kv => new PropertyRow { Key = kv.Key, Value = kv.Value?.ToString() ?? string.Empty })
-                .ToList();
+            _propertyDict = Details.ApplicationProperties?.ToDictionary(kv => kv.Key, kv => kv.Value?.ToString() ?? string.Empty)
+                           ?? new Dictionary<string, string>(StringComparer.Ordinal);
         }
     }
 
@@ -156,9 +138,8 @@
         try
         {
             _submitting = true;
-            var props = _propertyRows
-                .Where(p => !string.IsNullOrWhiteSpace(p.Key))
-                .ToDictionary(p => p.Key, p => p.Value ?? string.Empty);
+            var props = _propertyDict?.ToDictionary(kv => kv.Key, kv => kv.Value ?? string.Empty)
+                        ?? new Dictionary<string, string>();
 
             var idToUse = _generateNewMessageId ? Guid.NewGuid().ToString() : _messageIdEdit;
             if (_generateNewMessageId)
@@ -205,19 +186,5 @@
         }
     }
 
-    private void AddProperty()
-    {
-        _propertyRows.Add(new PropertyRow());
-    }
-
-    private void RemoveProperty(PropertyRow row)
-    {
-        _propertyRows.Remove(row);
-    }
-
-    private sealed class PropertyRow
-    {
-        public string Key { get; set; } = string.Empty;
-        public string? Value { get; set; }
-    }
+    // Property editing is handled by KeyValueEditor
 }

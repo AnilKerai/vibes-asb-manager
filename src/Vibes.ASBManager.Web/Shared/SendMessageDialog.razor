@@ -8,7 +8,8 @@
             <MudTextField T="string" Label="Correlation Id" @bind-Value="Model.CorrelationId" tabindex="2" />
             <MudAutocomplete T="string" Label="Content Type" @bind-Value="Model.ContentType" SearchFunc="SearchContentTypes" Clearable="true" tabindex="3" />
             <CodeEditor @bind-Value="Model.Body" ContentType="Model.ContentType" Lines="12" Placeholder="Body" />
-            <MudTextField T="string" Label="Properties (one per line: key=value)" @bind-Value="_propertiesText" Lines="4" tabindex="5" />
+            <MudText Typo="Typo.subtitle2" Class="mt-2">Application Properties</MudText>
+            <KeyValueEditor @bind-Value="Model.Properties" />
             <MudNumericField T="int" Label="Count" @bind-Value="Model.Count" Min="1" Max="1000" Immediate="true" tabindex="6" />
             <MudNumericField T="int" Label="Interval (seconds; 0 for none)" @bind-Value="Model.IntervalSeconds" Min="0" Max="3600" Immediate="true" tabindex="7" />
         </MudForm>
@@ -30,7 +31,6 @@
     [Parameter] public string Title { get; set; } = "Send Message(s)";
 
     private MudForm? _form;
-    private string _propertiesText = string.Empty;
 
     public SendMessageRequest Model { get; set; } = new();
 
@@ -77,23 +77,7 @@
             return;
         }
 
-        // Parse properties
-        Model.Properties.Clear();
-        if (!string.IsNullOrWhiteSpace(_propertiesText))
-        {
-            var lines = _propertiesText.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries);
-            foreach (var raw in lines)
-            {
-                var line = raw.Trim();
-                if (string.IsNullOrEmpty(line)) continue;
-                var idx = line.IndexOf('=');
-                if (idx <= 0) continue;
-                var key = line.Substring(0, idx).Trim();
-                var value = line[(idx + 1)..].Trim();
-                if (!string.IsNullOrEmpty(key))
-                    Model.Properties[key] = value;
-            }
-        }
+        // Properties are already bound via KeyValueEditor to Model.Properties
 
         MudDialog?.Close(DialogResult.Ok(Model));
     }
