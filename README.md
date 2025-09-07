@@ -124,6 +124,7 @@ You can run the container directly and persist connection data using a named vol
 docker volume create vibes-asb-manager-data
 
 docker run -d \
+  --pull always
   --name vibes-asb-manager \
   -p 9000:8080 \
   -v vibes-asb-manager-data:/app/App_Data \
