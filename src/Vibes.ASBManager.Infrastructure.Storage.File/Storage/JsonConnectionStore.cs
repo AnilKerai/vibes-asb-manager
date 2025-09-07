@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Options;
 using Vibes.ASBManager.Application.Interfaces;
+using Vibes.ASBManager.Application.Interfaces.Connection;
 using Vibes.ASBManager.Domain.Models;
 using Vibes.ASBManager.Infrastructure.Storage.File.IO;
 using Vibes.ASBManager.Infrastructure.Storage.File.Options;

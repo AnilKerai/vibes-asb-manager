@@ -1,6 +1,6 @@
 using Vibes.ASBManager.Domain.Models;
 
-namespace Vibes.ASBManager.Application.Interfaces;
+namespace Vibes.ASBManager.Application.Interfaces.Connection;
 
 public interface IConnectionStore
 {
