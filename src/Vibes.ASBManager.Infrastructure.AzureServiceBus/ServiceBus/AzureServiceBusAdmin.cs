@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Azure;
 using Azure.Messaging.ServiceBus.Administration;
 using Vibes.ASBManager.Application.Interfaces;
@@ -5,6 +6,7 @@ using Vibes.ASBManager.Application.Models;
 
 namespace Vibes.ASBManager.Infrastructure.AzureServiceBus.ServiceBus;
 
+[ExcludeFromCodeCoverage]
 public sealed class AzureServiceBusAdmin : IServiceBusAdmin
 {
     public async Task CreateQueueAsync(

@@ -8,8 +8,6 @@ public class SendMessageRequest
     public string? ContentType { get; set; } = "application/json";
     public Dictionary<string, string> Properties { get; set; } = new();
     public int Count { get; set; } = 1;
-    // Optional interval between messages in seconds; <= 0 means send immediately back-to-back
-    public int IntervalSeconds { get; set; } = 0;
-    // Optional: schedule enqueue time in UTC; null means send immediately
+    public int IntervalSeconds { get; set; }
     public DateTimeOffset? ScheduledEnqueueUtc { get; set; }
 }

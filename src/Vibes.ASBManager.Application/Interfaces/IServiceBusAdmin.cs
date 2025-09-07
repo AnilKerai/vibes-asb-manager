@@ -23,7 +23,6 @@ public interface IServiceBusAdmin
     Task DeleteTopicAsync(string connectionString, string topicName, CancellationToken ct = default);
     Task<IReadOnlyList<SubscriptionSummary>> ListSubscriptionsAsync(string connectionString, string topicName, CancellationToken ct = default);
 
-    // Settings (TTL and message expiry)
     Task<QueueSettings> GetQueueSettingsAsync(string connectionString, string queueName, CancellationToken ct = default);
     Task UpdateQueueSettingsAsync(string connectionString, string queueName, TimeSpan defaultMessageTimeToLive, bool deadLetteringOnMessageExpiration, CancellationToken ct = default);
     Task UpdateQueuePropertiesAsync(
@@ -59,8 +58,7 @@ public interface IServiceBusAdmin
         string? forwardTo,
         string? forwardDeadLetteredMessagesTo,
         CancellationToken ct = default);
-
-    // Subscription rules (filters)
+    
     Task<IReadOnlyList<SubscriptionRuleInfo>> ListSubscriptionRulesAsync(string connectionString, string topicName, string subscriptionName, CancellationToken ct = default);
     Task CreateSubscriptionSqlRuleAsync(string connectionString, string topicName, string subscriptionName, string ruleName, string sqlExpression, string? sqlAction = null, CancellationToken ct = default);
     Task CreateSubscriptionCorrelationRuleAsync(

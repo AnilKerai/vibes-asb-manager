@@ -1,9 +1,11 @@
+using System.Diagnostics.CodeAnalysis;
 using Azure.Messaging.ServiceBus;
 using Vibes.ASBManager.Application.Interfaces;
 using Vibes.ASBManager.Application.Models;
 
 namespace Vibes.ASBManager.Infrastructure.AzureServiceBus.ServiceBus;
 
+[ExcludeFromCodeCoverage]
 public sealed class AzureServiceBusMessaging : IServiceBusMessaging
 {
     public async Task<IReadOnlyList<MessagePreview>> PeekQueueAsync(string connectionString, string queueName, int maxMessages = 50, long? fromSequenceNumber = null, CancellationToken ct = default)

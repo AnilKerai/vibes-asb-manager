@@ -35,8 +35,8 @@
     private MudTextField<string>? _connField;
     private string _connString = string.Empty;
     private string _name = string.Empty;
-    private bool _nameTouched = false;
-    private bool _showConn = false;
+    private bool _nameTouched;
+    private bool _showConn;
 
     private async Task OnSave()
     {

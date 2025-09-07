@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Vibes.ASBManager.Application.Interfaces;
@@ -5,6 +6,7 @@ using Vibes.ASBManager.Domain.Models;
 
 namespace Vibes.ASBManager.Infrastructure.Storage.File.Storage;
 
+[ExcludeFromCodeCoverage]
 public sealed class JsonConnectionStore : IConnectionStore
 {
     private readonly string _filePath;
