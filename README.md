@@ -12,7 +12,7 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080
     ports:
-      - "8080:8080"
+      - "9000:8080"
     volumes:
       - appdata:/app/App_Data
 
@@ -73,29 +73,27 @@ Storage: The app persists connections in a JSON file at `App_Data/connections.js
 
 Local dev options:
 
-- .NET Aspire (AppHost) — orchestrates the Web app only (no DB)
 - Docker Compose — pulls the published image and persists `App_Data` via a volume
+- Local run — `dotnet run -p src/Vibes.ASBManager.Web`
 
 ---
 
 ## Prerequisites
 
 - .NET 9 SDK
-- Docker Desktop (for Aspire or Docker Compose)
+- Docker Desktop (for Docker Compose)
 
 ---
 
-## Option A: Run with .NET Aspire (recommended)
+## Option A: Run locally (no Docker)
 
-This starts the Web app with service defaults (OpenTelemetry, health endpoints in dev, etc.). No database is used.
+From the repo root:
 
 ```bash
-# from repo root
-DOTNET_CLI_TELEMETRY_OPTOUT=1 dotnet run -p src/Vibes.ASBManager.AppHost
+dotnet run -p src/Vibes.ASBManager.Web
 ```
 
-- Open the Web URL printed in the console.
-- Connection data is stored in `App_Data/connections.json`.
+The app stores data in `src/Vibes.ASBManager.Web/App_Data/connections.json`.
 
 ---
 
@@ -106,7 +104,7 @@ This uses `docker-compose.yml` to run the Web app (no DB). The `web` service pul
 ```bash
 # from repo root
 docker compose up -d
-# app will be available at http://localhost:8080
+# app will be available at http://localhost:9000
 ```
 
 - Connection data persists in the `appdata` Docker volume (mounted to `/app/App_Data`).
@@ -115,6 +113,32 @@ Reset data (Compose):
 
 ```bash
 docker compose down -v  # drops containers and the appdata volume
+```
+
+### Run with a single Docker command (with volume persistence)
+
+You can run the container directly and persist connection data using a named volume mounted to `/app/App_Data`.
+
+```bash
+# optional: create the volume explicitly (it will be auto-created on first run otherwise)
+docker volume create vibes-asb-manager-data
+
+docker run -d \
+  --name vibes-asb-manager \
+  -p 9000:8080 \
+  -v vibes-asb-manager-data:/app/App_Data \
+  -e ASPNETCORE_ENVIRONMENT=Development \
+  anilkerai/vibes-asb-manager-web:latest
+```
+
+Pin to a specific version:
+
+```bash
+docker run -d \
+  --name vibes-asb-manager \
+  -p 9000:8080 \
+  -v vibes-asb-manager-data:/app/App_Data \
+  anilkerai/vibes-asb-manager-web:1.2.3
 ```
 
 ### Pin to a specific image version with .env
@@ -153,7 +177,6 @@ The app will store data in `src/Vibes.ASBManager.Web/App_Data/connections.json`.
 - `src/Vibes.ASBManager.Application/` — app interfaces and contracts
 - `src/Vibes.ASBManager.Infrastructure/` — JSON connection store and Service Bus implementations
 - `src/Vibes.ASBManager.Domain/` — domain models (e.g., `ConnectionInfo` with `Pinned`)
-- `src/Vibes.ASBManager.AppHost/` — .NET Aspire orchestrator (dev-only)
 - `src/Vibes.ASBManager.ServiceDefaults/` — shared service defaults (OpenTelemetry, health checks)
 
 ---
@@ -165,7 +188,7 @@ When running in Development environment, the Web app maps:
 - Readiness: `GET /health`
 - Liveness: `GET /alive` (checks tagged as `live`)
 
-These are mainly for local diagnostics and Compose/Aspire orchestration.
+These are mainly for local diagnostics and Compose orchestration.
 
 ---
 
