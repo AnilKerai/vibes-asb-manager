@@ -1,5 +1,11 @@
-@inject IServiceBusAdmin Admin
-@inject IServiceBusMessaging Messaging
+@inject IQueueAdmin QueueAdmin
+@inject ITopicAdmin TopicAdmin
+@inject ISubscriptionAdmin SubscriptionAdmin
+@inject ISubscriptionRuleAdmin SubscriptionRuleAdmin
+@inject IMessageBrowser MessageBrowser
+@inject IMessageSender MessageSender
+@inject IMessageMaintenance MessageMaintenance
+@inject IDeadLetterMaintenance DeadLetterMaintenance
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
 @using System.Threading
@@ -251,10 +257,10 @@
 
         try
         {
-            await Admin.DeleteSubscriptionAsync(_connectionString!, topicName, subName);
+            await SubscriptionAdmin.DeleteSubscriptionAsync(_connectionString!, topicName, subName);
             Snackbar.Add($"Subscription '{topicName}/{subName}' deleted.", Severity.Success);
             // Refresh topic subscriptions
-            var subs = await Admin.ListSubscriptionsAsync(_connectionString!, topicName);
+            var subs = await SubscriptionAdmin.ListSubscriptionsAsync(_connectionString!, topicName);
             _topicSubscriptions[topicName] = subs;
             // Select the topic and keep it expanded
             StopLiveActive();
@@ -286,7 +292,7 @@
         if (confirm != true) return;
         try
         {
-            var purged = await Messaging.PurgeSubscriptionAsync(_connectionString, topicName, subscriptionName, maxMessages: 1000);
+            var purged = await MessageMaintenance.PurgeSubscriptionAsync(_connectionString, topicName, subscriptionName, maxMessages: 1000);
             Snackbar.Add($"Purged {purged} messages from {topicName}/{subscriptionName}.", Severity.Success);
             await RefreshActiveIfNeededAsync();
         }
@@ -308,7 +314,7 @@
         if (confirm != true) return;
         try
         {
-            var purged = await Messaging.PurgeSubscriptionDeadLetterAsync(_connectionString, topicName, subscriptionName, maxMessages: 1000);
+            var purged = await DeadLetterMaintenance.PurgeSubscriptionDeadLetterAsync(_connectionString, topicName, subscriptionName, maxMessages: 1000);
             Snackbar.Add($"Purged {purged} DLQ messages from {topicName}/{subscriptionName}.", Severity.Success);
             await RefreshDlqIfNeededAsync();
         }
@@ -355,8 +361,8 @@
         {
             _attemptedLoad = true;
             _isLoading = true;
-            var queuesTask = Admin.ListQueuesAsync(_connectionString);
-            var topicsTask = Admin.ListTopicsAsync(_connectionString);
+            var queuesTask = QueueAdmin.ListQueuesAsync(_connectionString);
+            var topicsTask = TopicAdmin.ListTopicsAsync(_connectionString);
             await Task.WhenAll(queuesTask, topicsTask);
             _queues = queuesTask.Result;
             _topics = topicsTask.Result;
@@ -369,7 +375,7 @@
                 {
                     try
                     {
-                        var subs = await Admin.ListSubscriptionsAsync(_connectionString, t.Name);
+                        var subs = await SubscriptionAdmin.ListSubscriptionsAsync(_connectionString, t.Name);
                         _topicSubscriptions[t.Name] = subs;
                     }
                     catch
@@ -395,7 +401,7 @@
         try
         {
             _peekedQueue = $"Queue: {queueName}";
-            _peekedMessages = await Messaging.PeekQueueAsync(_connectionString, queueName, maxMessages: 50);
+            _peekedMessages = await MessageBrowser.PeekQueueAsync(_connectionString, queueName, maxMessages: 50);
         }
         catch (Exception ex)
         {
@@ -409,7 +415,7 @@
         try
         {
             _peekedQueue = $"Queue DLQ: {queueName}";
-            _peekedMessages = await Messaging.PeekQueueDeadLetterAsync(_connectionString, queueName, maxMessages: 50);
+            _peekedMessages = await MessageBrowser.PeekQueueDeadLetterAsync(_connectionString, queueName, maxMessages: 50);
         }
         catch (Exception ex)
         {
@@ -425,7 +431,7 @@
             _selectedTopic = args.Item;
             var topicName = args.Item?.Name;
             if (string.IsNullOrWhiteSpace(topicName)) return;
-            _subscriptions = await Admin.ListSubscriptionsAsync(_connectionString, topicName);
+            _subscriptions = await SubscriptionAdmin.ListSubscriptionsAsync(_connectionString, topicName);
         }
         catch (Exception ex)
         {
@@ -441,7 +447,7 @@
         try
         {
             _peekedQueue = $"Subscription: {topicName}/{subscriptionName}";
-            _peekedMessages = await Messaging.PeekSubscriptionAsync(_connectionString, topicName, subscriptionName, maxMessages: 50);
+            _peekedMessages = await MessageBrowser.PeekSubscriptionAsync(_connectionString, topicName, subscriptionName, maxMessages: 50);
         }
         catch (Exception ex)
         {
@@ -457,7 +463,7 @@
         try
         {
             _peekedQueue = $"Subscription DLQ: {topicName}/{subscriptionName}";
-            _peekedMessages = await Messaging.PeekSubscriptionDeadLetterAsync(_connectionString, topicName, subscriptionName, maxMessages: 50);
+            _peekedMessages = await MessageBrowser.PeekSubscriptionDeadLetterAsync(_connectionString, topicName, subscriptionName, maxMessages: 50);
         }
         catch (Exception ex)
         {
@@ -489,7 +495,8 @@
                     {
                         sched = sched.Value.AddSeconds(req.IntervalSeconds * i);
                     }
-                    await Messaging.SendToQueueAsync(
+                    await MessageSender.SendToQueueAsync(
+                        
                         connectionString: _connectionString,
                         queueName: queueName,
                         body: req.Body,
@@ -547,7 +554,7 @@
                     {
                         sched = sched.Value.AddSeconds(req.IntervalSeconds * i);
                     }
-                    await Messaging.SendToTopicAsync(
+                    await MessageSender.SendToTopicAsync(
                         connectionString: _connectionString,
                         topicName: topicName,
                         body: req.Body,
@@ -593,7 +600,7 @@
         if (confirm != true) return;
         try
         {
-            var purged = await Messaging.PurgeQueueAsync(_connectionString, queueName, maxMessages: 1000);
+            var purged = await MessageMaintenance.PurgeQueueAsync(_connectionString, queueName, maxMessages: 1000);
             Snackbar.Add($"Purged {purged} messages from {queueName}.", Severity.Success);
             await RefreshActiveIfNeededAsync();
         }
@@ -615,7 +622,7 @@
         if (confirm != true) return;
         try
         {
-            var purged = await Messaging.PurgeQueueDeadLetterAsync(_connectionString, queueName, maxMessages: 1000);
+            var purged = await DeadLetterMaintenance.PurgeQueueDeadLetterAsync(_connectionString, queueName, maxMessages: 1000);
             Snackbar.Add($"Purged {purged} DLQ messages from {queueName}.", Severity.Success);
             await RefreshDlqIfNeededAsync();
         }
@@ -637,7 +644,7 @@
         if (confirm != true) return;
         try
         {
-            var replayed = await Messaging.ReplayQueueDeadLettersAsync(_connectionString, queueName, maxMessages: 50);
+            var replayed = await DeadLetterMaintenance.ReplayQueueDeadLettersAsync(_connectionString, queueName, maxMessages: 50);
             Snackbar.Add($"Replayed {replayed} DLQ messages for {queueName}.", Severity.Success);
             await RefreshActiveIfNeededAsync();
             await RefreshDlqIfNeededAsync();
@@ -834,18 +841,18 @@
             _settingsLoading = true;
             if (TryGetQueue(out var q))
             {
-                var s = await Admin.GetQueueSettingsAsync(_connectionString!, q);
+                var s = await QueueAdmin.GetQueueSettingsAsync(_connectionString!, q);
                 _ttlText = FormatTimeSpan(s.DefaultMessageTimeToLive);
                 _deadLetterOnExpiration = s.DeadLetteringOnMessageExpiration;
             }
             else if (TryGetTopic(out var t))
             {
-                var s = await Admin.GetTopicSettingsAsync(_connectionString!, t);
+                var s = await TopicAdmin.GetTopicSettingsAsync(_connectionString!, t);
                 _ttlText = FormatTimeSpan(s.DefaultMessageTimeToLive);
             }
             else if (TryGetSubscription(out var topic, out var sub))
             {
-                var s = await Admin.GetSubscriptionSettingsAsync(_connectionString!, topic, sub);
+                var s = await SubscriptionAdmin.GetSubscriptionSettingsAsync(_connectionString!, topic, sub);
                 _ttlText = FormatTimeSpan(s.DefaultMessageTimeToLive);
                 _deadLetterOnExpiration = s.DeadLetteringOnMessageExpiration;
             }
@@ -887,15 +894,15 @@
             _settingsSaving = true;
             if (TryGetQueue(out var q))
             {
-                await Admin.UpdateQueueSettingsAsync(_connectionString!, q, ttl, _deadLetterOnExpiration);
+                await QueueAdmin.UpdateQueueSettingsAsync(_connectionString!, q, ttl, _deadLetterOnExpiration);
             }
             else if (TryGetTopic(out var t))
             {
-                await Admin.UpdateTopicSettingsAsync(_connectionString!, t, ttl);
+                await TopicAdmin.UpdateTopicSettingsAsync(_connectionString!, t, ttl);
             }
             else if (TryGetSubscription(out var topic, out var sub))
             {
-                await Admin.UpdateSubscriptionSettingsAsync(_connectionString!, topic, sub, ttl, _deadLetterOnExpiration);
+                await SubscriptionAdmin.UpdateSubscriptionSettingsAsync(_connectionString!, topic, sub, ttl, _deadLetterOnExpiration);
             }
             // Reload to reflect authoritative values from the server (SDK may coerce TTL)
             await LoadSettingsForSelection();
@@ -926,7 +933,7 @@
         try
         {
             _rulesLoading = true;
-            var items = await Admin.ListSubscriptionRulesAsync(_connectionString!, topic, sub);
+            var items = await SubscriptionRuleAdmin.ListSubscriptionRulesAsync(_connectionString!, topic, sub);
             _rules = items.ToList();
         }
         catch (Exception ex)
@@ -961,14 +968,14 @@
         try
         {
             _creatingSubscription = true;
-            await Admin.CreateSubscriptionAsync(_connectionString!, topicName, subName);
+            await SubscriptionAdmin.CreateSubscriptionAsync(_connectionString!, topicName, subName);
             // Optionally apply settings from the dialog
             TimeSpan ttlToSet;
             try
             {
                 if (!TryParseTtlString(req.TtlText, out var parsed))
                 {
-                    var current = await Admin.GetSubscriptionSettingsAsync(_connectionString!, topicName, subName);
+                    var current = await SubscriptionAdmin.GetSubscriptionSettingsAsync(_connectionString!, topicName, subName);
                     ttlToSet = current.DefaultMessageTimeToLive;
                 }
                 else ttlToSet = parsed;
@@ -979,7 +986,7 @@
             }
             try
             {
-                await Admin.UpdateSubscriptionSettingsAsync(_connectionString!, topicName, subName, ttlToSet, req.DeadLetterOnExpiration);
+                await SubscriptionAdmin.UpdateSubscriptionSettingsAsync(_connectionString!, topicName, subName, ttlToSet, req.DeadLetterOnExpiration);
             }
             catch { /* best-effort settings apply */ }
 
@@ -990,7 +997,7 @@
                 TimeSpan lockDuration = TimeSpan.FromMinutes(1);
                 if (TryParseTtlString(req.LockDurationText, out var parsedLock))
                     lockDuration = parsedLock;
-                await Admin.UpdateSubscriptionPropertiesAsync(
+                await SubscriptionAdmin.UpdateSubscriptionPropertiesAsync(
                     _connectionString!,
                     topicName,
                     subName,
@@ -1010,8 +1017,8 @@
                 try
                 {
                     // Delete default match-all rule, then create SQL rule using the default name
-                    try { await Admin.DeleteSubscriptionRuleAsync(_connectionString!, topicName, subName, "$Default"); } catch { }
-                    await Admin.CreateSubscriptionSqlRuleAsync(_connectionString!, topicName, subName, "$Default", req.InitialRuleSql!, req.InitialRuleSqlAction);
+                    try { await SubscriptionRuleAdmin.DeleteSubscriptionRuleAsync(_connectionString!, topicName, subName, "$Default"); } catch { }
+                    await SubscriptionRuleAdmin.CreateSubscriptionSqlRuleAsync(_connectionString!, topicName, subName, "$Default", req.InitialRuleSql!, req.InitialRuleSqlAction);
                 }
                 catch
                 {
@@ -1020,7 +1027,7 @@
             }
             Snackbar.Add($"Subscription '{subName}' created on topic '{topicName}'.", Severity.Success);
             // Refresh this topic's subscription list in the tree
-            var subs = await Admin.ListSubscriptionsAsync(_connectionString!, topicName);
+            var subs = await SubscriptionAdmin.ListSubscriptionsAsync(_connectionString!, topicName);
             _topicSubscriptions[topicName] = subs;
             // Ensure the topic is expanded and select the new subscription
             _expandedTopicNames.Add(topicName);
@@ -1062,7 +1069,7 @@
             TimeSpan lockDuration = TimeSpan.FromMinutes(1);
             if (TryParseTtlString(req.LockDurationText, out var parsedLock)) lockDuration = parsedLock;
 
-            await Admin.CreateQueueAsync(
+            await QueueAdmin.CreateQueueAsync(
                 _connectionString!,
                 name,
                 req.RequiresSession,
@@ -1075,7 +1082,7 @@
                 req.ForwardDeadLetteredMessagesTo);
             Snackbar.Add($"Queue '{name}' created.", Severity.Success);
             // Refresh and select
-            _queues = await Admin.ListQueuesAsync(_connectionString!);
+            _queues = await QueueAdmin.ListQueuesAsync(_connectionString!);
             _selectedTreeValue = $"queue:{name}";
             await LoadSettingsForSelection();
             await RefreshActiveAsync();
@@ -1099,16 +1106,16 @@
         if (string.IsNullOrWhiteSpace(name)) return;
         try
         {
-            await Admin.CreateTopicAsync(_connectionString!, name);
+            await TopicAdmin.CreateTopicAsync(_connectionString!, name);
             // Apply TTL
             TimeSpan ttlToSet = TimeSpan.FromDays(14);
             if (TryParseTtlString(req.TtlText, out var parsedTtl)) ttlToSet = parsedTtl;
-            try { await Admin.UpdateTopicSettingsAsync(_connectionString!, name, ttlToSet); } catch { }
+            try { await TopicAdmin.UpdateTopicSettingsAsync(_connectionString!, name, ttlToSet); } catch { }
             // Advanced
-            try { await Admin.UpdateTopicPropertiesAsync(_connectionString!, name, req.EnableBatchedOperations); } catch { }
+            try { await TopicAdmin.UpdateTopicPropertiesAsync(_connectionString!, name, req.EnableBatchedOperations); } catch { }
             Snackbar.Add($"Topic '{name}' created.", Severity.Success);
             // Refresh and select
-            _topics = await Admin.ListTopicsAsync(_connectionString!);
+            _topics = await TopicAdmin.ListTopicsAsync(_connectionString!);
             _expandedTopicNames.Add(name);
             _selectedTreeValue = $"topic:{name}";
             await LoadSettingsForSelection();
@@ -1132,7 +1139,7 @@
         if (confirm != true) return;
         try
         {
-            await Admin.DeleteQueueAsync(_connectionString!, name);
+            await QueueAdmin.DeleteQueueAsync(_connectionString!, name);
             Snackbar.Add($"Queue '{name}' deleted.", Severity.Success);
             await LoadEntities();
             _selectedTreeValue = null;
@@ -1156,7 +1163,7 @@
         if (confirm != true) return;
         try
         {
-            await Admin.DeleteTopicAsync(_connectionString!, name);
+            await TopicAdmin.DeleteTopicAsync(_connectionString!, name);
             Snackbar.Add($"Topic '{name}' deleted.", Severity.Success);
             await LoadEntities();
             _selectedTreeValue = null;
@@ -1186,11 +1193,11 @@
                 switch (result.Data)
                 {
                     case CreateSqlRuleRequest sql:
-                        await Admin.CreateSubscriptionSqlRuleAsync(_connectionString!, topic, sub, sql.Name, sql.SqlExpression, sql.SqlAction);
+                        await SubscriptionRuleAdmin.CreateSubscriptionSqlRuleAsync(_connectionString!, topic, sub, sql.Name, sql.SqlExpression, sql.SqlAction);
                         Snackbar.Add($"Rule '{sql.Name}' created.", Severity.Success);
                         break;
                     case CreateCorrelationRuleRequest corr:
-                        await Admin.CreateSubscriptionCorrelationRuleAsync(
+                        await SubscriptionRuleAdmin.CreateSubscriptionCorrelationRuleAsync(
                             _connectionString!, topic, sub, corr.Name,
                             corr.CorrelationId, corr.Subject, corr.To, corr.ReplyTo,
                             corr.ReplyToSessionId, corr.SessionId, corr.ContentType,
@@ -1227,7 +1234,7 @@
         try
         {
             if (!TryGetSubscription(out var topic, out var sub)) return;
-            await Admin.DeleteSubscriptionRuleAsync(_connectionString!, topic, sub, rule.Name);
+            await SubscriptionRuleAdmin.DeleteSubscriptionRuleAsync(_connectionString!, topic, sub, rule.Name);
             Snackbar.Add($"Rule '{rule.Name}' deleted.", Severity.Success);
             await RefreshRulesAsync();
         }
@@ -1247,11 +1254,11 @@
             IReadOnlyList<MessagePreview> items = Array.Empty<MessagePreview>();
             if (TryGetQueue(out var q))
             {
-                items = await Messaging.PeekQueueAsync(_connectionString!, q, maxMessages: FetchSize, fromSequenceNumber: _activeAnchor);
+                items = await MessageBrowser.PeekQueueAsync(_connectionString!, q, maxMessages: FetchSize, fromSequenceNumber: _activeAnchor);
             }
             else if (TryGetSubscription(out var t, out var s))
             {
-                items = await Messaging.PeekSubscriptionAsync(_connectionString!, t, s, maxMessages: FetchSize, fromSequenceNumber: _activeAnchor);
+                items = await MessageBrowser.PeekSubscriptionAsync(_connectionString!, t, s, maxMessages: FetchSize, fromSequenceNumber: _activeAnchor);
             }
             _activeMessages = items
                 .OrderByDescending(m => m.EnqueuedTime)
@@ -1276,11 +1283,11 @@
             IReadOnlyList<MessagePreview> items = Array.Empty<MessagePreview>();
             if (TryGetQueue(out var q))
             {
-                items = await Messaging.PeekQueueDeadLetterAsync(_connectionString!, q, maxMessages: FetchSize, fromSequenceNumber: _dlqAnchor);
+                items = await MessageBrowser.PeekQueueDeadLetterAsync(_connectionString!, q, maxMessages: FetchSize, fromSequenceNumber: _dlqAnchor);
             }
             else if (TryGetSubscription(out var t, out var s))
             {
-                items = await Messaging.PeekSubscriptionDeadLetterAsync(_connectionString!, t, s, maxMessages: FetchSize, fromSequenceNumber: _dlqAnchor);
+                items = await MessageBrowser.PeekSubscriptionDeadLetterAsync(_connectionString!, t, s, maxMessages: FetchSize, fromSequenceNumber: _dlqAnchor);
             }
             _dlqMessages = items
                 .OrderByDescending(m => m.EnqueuedTime)
@@ -1473,14 +1480,14 @@
             if (TryGetQueue(out var q))
             {
                 details = isDeadLetter
-                    ? await Messaging.PeekQueueDeadLetterMessageAsync(_connectionString!, q, sequenceNumber)
-                    : await Messaging.PeekQueueMessageAsync(_connectionString!, q, sequenceNumber);
+                    ? await MessageBrowser.PeekQueueDeadLetterMessageAsync(_connectionString!, q, sequenceNumber)
+                    : await MessageBrowser.PeekQueueMessageAsync(_connectionString!, q, sequenceNumber);
             }
             else if (TryGetSubscription(out var t, out var s))
             {
                 details = isDeadLetter
-                    ? await Messaging.PeekSubscriptionDeadLetterMessageAsync(_connectionString!, t, s, sequenceNumber)
-                    : await Messaging.PeekSubscriptionMessageAsync(_connectionString!, t, s, sequenceNumber);
+                    ? await MessageBrowser.PeekSubscriptionDeadLetterMessageAsync(_connectionString!, t, s, sequenceNumber)
+                    : await MessageBrowser.PeekSubscriptionMessageAsync(_connectionString!, t, s, sequenceNumber);
             }
 
             if (details is null)

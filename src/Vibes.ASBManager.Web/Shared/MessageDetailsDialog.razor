@@ -106,7 +106,8 @@
     [Parameter] public string? TopicName { get; set; }
     [Parameter] public string? SubscriptionName { get; set; }
 
-    [Inject] private IServiceBusMessaging Messaging { get; set; } = default!;
+    [Inject] private IMessageSender MessageSender { get; set; } = default!;
+    [Inject] private IDeadLetterMaintenance DeadLetterMaintenance { get; set; } = default!;
     [Inject] private ISnackbar Snackbar { get; set; } = default!;
     [Inject] private IJSRuntime JS { get; set; } = default!;
 
@@ -168,11 +169,11 @@
 
             if (!string.IsNullOrWhiteSpace(QueueName))
             {
-                await Messaging.SendToQueueAsync(ConnectionString, QueueName!, _bodyEdit, _subjectEdit, _correlationIdEdit, props, _contentTypeEdit, idToUse);
+                await MessageSender.SendToQueueAsync(ConnectionString, QueueName!, _bodyEdit, _subjectEdit, _correlationIdEdit, props, _contentTypeEdit, idToUse);
             }
             else if (!string.IsNullOrWhiteSpace(TopicName))
             {
-                await Messaging.SendToTopicAsync(ConnectionString, TopicName!, _bodyEdit, _subjectEdit, _correlationIdEdit, props, _contentTypeEdit, idToUse);
+                await MessageSender.SendToTopicAsync(ConnectionString, TopicName!, _bodyEdit, _subjectEdit, _correlationIdEdit, props, _contentTypeEdit, idToUse);
             }
 
             // Optionally remove original DLQ
@@ -181,11 +182,11 @@
                 var removed = false;
                 if (!string.IsNullOrWhiteSpace(QueueName))
                 {
-                    removed = await Messaging.RemoveQueueDeadLetterMessageAsync(ConnectionString, QueueName!, Details.SequenceNumber);
+                    removed = await DeadLetterMaintenance.RemoveQueueDeadLetterMessageAsync(ConnectionString, QueueName!, Details.SequenceNumber);
                 }
                 else if (!string.IsNullOrWhiteSpace(TopicName) && !string.IsNullOrWhiteSpace(SubscriptionName))
                 {
-                    removed = await Messaging.RemoveSubscriptionDeadLetterMessageAsync(ConnectionString, TopicName!, SubscriptionName!, Details.SequenceNumber);
+                    removed = await DeadLetterMaintenance.RemoveSubscriptionDeadLetterMessageAsync(ConnectionString, TopicName!, SubscriptionName!, Details.SequenceNumber);
                 }
                 if (!removed)
                     Snackbar.Add("Resubmitted, but failed to remove original from DLQ (not found within scan window).", Severity.Warning);

@@ -13,7 +13,7 @@
 
             <MudDivider Class="my-2" />
             <MudText Typo="Typo.subtitle2">Schedule (optional)</MudText>
-            <MudSwitch T="bool" Checked="@_useSchedule" ValueChanged="OnScheduleChanged" Color="Color.Primary" Label="Schedule for later" />
+            <MudSwitch T="bool" Value="_useSchedule" ValueChanged="OnScheduleChanged" Color="Color.Primary" Label="Schedule for later" />
             @if (_useSchedule)
             {
                 <MudStack Row="true" Spacing="2">

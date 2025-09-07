@@ -9,7 +9,7 @@ namespace Vibes.ASBManager.Infrastructure.AzureServiceBus.ServiceBus;
 [ExcludeFromCodeCoverage]
 public sealed class AzureServiceBusAdmin(
     IRuleFormatter ruleFormatter
-) : IServiceBusAdmin
+) : IQueueAdmin, ITopicAdmin, ISubscriptionAdmin, ISubscriptionRuleAdmin
 {
     public async Task CreateQueueAsync(
         string connectionString,

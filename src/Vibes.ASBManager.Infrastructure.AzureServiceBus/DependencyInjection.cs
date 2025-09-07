@@ -11,7 +11,15 @@ public static class DependencyInjection
     public static void AddAzureServiceBusInfrastructure(this IServiceCollection services)
     {
         services.AddSingleton<IRuleFormatter, RuleFormatter>();
-        services.AddSingleton<IServiceBusAdmin, AzureServiceBusAdmin>();
-        services.AddSingleton<IServiceBusMessaging, AzureServiceBusMessaging>();
+        
+        services.AddSingleton<IQueueAdmin, AzureServiceBusAdmin>();
+        services.AddSingleton<ITopicAdmin, AzureServiceBusAdmin>();
+        services.AddSingleton<ISubscriptionAdmin, AzureServiceBusAdmin>();
+        services.AddSingleton<ISubscriptionRuleAdmin, AzureServiceBusAdmin>();
+        
+        services.AddSingleton<IMessageSender, AzureServiceBusMessaging>();
+        services.AddSingleton<IMessageBrowser, AzureServiceBusMessaging>();
+        services.AddSingleton<IMessageMaintenance, AzureServiceBusMessaging>();
+        services.AddSingleton<IDeadLetterMaintenance, AzureServiceBusMessaging>();
     }
 }
