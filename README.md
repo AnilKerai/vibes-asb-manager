@@ -141,6 +141,38 @@ docker run -d \
   anilkerai/vibes-asb-manager-web:1.2.3
 ```
 
+### Quick start scripts (macOS/Linux and Windows)
+
+Use the helper scripts to run the container and open your browser to http://localhost:9000 with a persistent volume:
+
+- macOS/Linux:
+
+```bash
+# one-time: make the script executable
+chmod +x scripts/run-docker-mac.sh
+
+# run with defaults (image :latest, port 9000, volume "vibes-asb-manager-data")
+./scripts/run-docker-mac.sh
+
+# override defaults (examples)
+WEB_IMAGE=anilkerai/vibes-asb-manager-web:1.2.3 \
+PORT=9001 VOLUME_NAME=my-asb-data CONTAINER_NAME=my-asb \
+./scripts/run-docker-mac.sh
+```
+
+- Windows (PowerShell):
+
+```powershell
+# run with defaults
+.\\scripts\\run-docker-win.ps1
+
+# override defaults (examples)
+.\\scripts\\run-docker-win.ps1 -Image anilkerai/vibes-asb-manager-web:1.2.3 -Port 9001 -VolumeName my-asb-data -ContainerName my-asb
+
+# if you hit execution policy restrictions
+powershell -ExecutionPolicy Bypass -File .\\scripts\\run-docker-win.ps1
+```
+
 ### Pin to a specific image version with .env
 
 You can control which image tag Compose pulls without editing YAML using a `.env` file (already git-ignored).
