@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 using Vibes.ASBManager.Application.Interfaces;
 using Vibes.ASBManager.Domain.Models;
 
-namespace Vibes.ASBManager.Infrastructure.Storage;
+namespace Vibes.ASBManager.Infrastructure.Storage.File.Storage;
 
 public sealed class JsonConnectionStore : IConnectionStore
 {
@@ -101,7 +101,7 @@ public sealed class JsonConnectionStore : IConnectionStore
     private async Task<List<ConnectionInfo>> ReadAsync(CancellationToken ct)
     {
         EnsureDirectory();
-        if (!File.Exists(_filePath))
+        if (!System.IO.File.Exists(_filePath))
         {
             return new List<ConnectionInfo>();
         }
@@ -126,13 +126,13 @@ public sealed class JsonConnectionStore : IConnectionStore
         {
             await JsonSerializer.SerializeAsync(fs, list, Options, ct).ConfigureAwait(false);
         }
-        if (File.Exists(_filePath))
+        if (System.IO.File.Exists(_filePath))
         {
-            File.Replace(tmp, _filePath, destinationBackupFileName: null);
+            System.IO.File.Replace(tmp, _filePath, destinationBackupFileName: null);
         }
         else
         {
-            File.Move(tmp, _filePath);
+            System.IO.File.Move(tmp, _filePath);
         }
     }
 

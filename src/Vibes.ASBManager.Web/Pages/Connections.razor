@@ -120,7 +120,7 @@
         StateHasChanged();
     }
 
-    private void OnConnectionRowClick(MudBlazor.TableRowClickEventArgs<ConnectionInfo> args)
+    private void OnConnectionRowClick(TableRowClickEventArgs<ConnectionInfo> args)
     {
         if (args?.Item is not null)
             OpenInTab(args.Item);

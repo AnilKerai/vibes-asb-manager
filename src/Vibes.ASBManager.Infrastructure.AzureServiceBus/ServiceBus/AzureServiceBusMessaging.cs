@@ -1,8 +1,8 @@
+using Azure.Messaging.ServiceBus;
 using Vibes.ASBManager.Application.Interfaces;
 using Vibes.ASBManager.Application.Models;
-using Azure.Messaging.ServiceBus;
 
-namespace Vibes.ASBManager.Infrastructure.ServiceBus;
+namespace Vibes.ASBManager.Infrastructure.AzureServiceBus.ServiceBus;
 
 public sealed class AzureServiceBusMessaging : IServiceBusMessaging
 {
@@ -216,7 +216,6 @@ public sealed class AzureServiceBusMessaging : IServiceBusMessaging
         return replayed;
     }
 
-    // Detailed message peek by sequence number
     public async Task<MessageDetails?> PeekQueueMessageAsync(string connectionString, string queueName, long sequenceNumber, CancellationToken ct = default)
     {
         await using var client = new ServiceBusClient(connectionString);
@@ -283,13 +282,11 @@ public sealed class AzureServiceBusMessaging : IServiceBusMessaging
 
     private static async Task<ServiceBusReceivedMessage?> PeekOneBySequenceAsync(ServiceBusReceiver receiver, long sequenceNumber, CancellationToken ct)
     {
-        // First try from the exact sequence number
         var one = await receiver.PeekMessagesAsync(1, sequenceNumber, ct).ConfigureAwait(false);
         var candidate = one.FirstOrDefault();
         if (candidate != null && candidate.SequenceNumber == sequenceNumber)
             return candidate;
 
-        // If not matched, try starting from previous sequence to capture the exact item (SDK semantics differ by version)
         if (sequenceNumber > 0)
         {
             var two = await receiver.PeekMessagesAsync(2, sequenceNumber - 1, ct).ConfigureAwait(false);
@@ -346,7 +343,7 @@ public sealed class AzureServiceBusMessaging : IServiceBusMessaging
 
     private static async Task<bool> RemoveFromReceiverBySequenceAsync(ServiceBusReceiver receiver, long sequenceNumber, CancellationToken ct)
     {
-        const int maxScan = 200; // safety cap to avoid draining entire DLQ
+        const int maxScan = 200;
         var scanned = 0;
         while (scanned < maxScan && !ct.IsCancellationRequested)
         {
@@ -360,7 +357,6 @@ public sealed class AzureServiceBusMessaging : IServiceBusMessaging
                 if (msg.SequenceNumber == sequenceNumber)
                 {
                     await receiver.CompleteMessageAsync(msg, ct).ConfigureAwait(false);
-                    // Abandon any other messages in the current batch
                     foreach (var other in messages)
                     {
                         if (other != msg)
@@ -372,7 +368,6 @@ public sealed class AzureServiceBusMessaging : IServiceBusMessaging
                 }
             }
 
-            // Not found in this batch, abandon them to return to DLQ
             foreach (var m in messages)
             {
                 try { await receiver.AbandonMessageAsync(m, cancellationToken: ct).ConfigureAwait(false); } catch { }

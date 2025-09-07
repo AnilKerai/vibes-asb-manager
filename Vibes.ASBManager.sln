@@ -1,4 +1,4 @@
-
+﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
@@ -11,13 +11,15 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Vibes.ASBManager.Applicatio
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Vibes.ASBManager.Domain", "src\Vibes.ASBManager.Domain\Vibes.ASBManager.Domain.csproj", "{6BB21B77-BCFE-48FB-8DC3-3D87716B1C96}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Vibes.ASBManager.Infrastructure", "src\Vibes.ASBManager.Infrastructure\Vibes.ASBManager.Infrastructure.csproj", "{203164B1-E9C2-4C29-8760-FC0F34913D23}"
-EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "host", "host", "{DD93B0CE-40A0-405E-BED9-F74385967623}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Vibes.ASBManager.ServiceDefaults", "src\Vibes.ASBManager.ServiceDefaults\Vibes.ASBManager.ServiceDefaults.csproj", "{7E4652A1-4279-4647-A94C-1925F820DB7D}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Vibes.ASBManager.Web", "src\Vibes.ASBManager.Web\Vibes.ASBManager.Web.csproj", "{45DC7D3E-152F-4710-9B1C-226EA5EAC7F8}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Vibes.ASBManager.Infrastructure.Storage.File", "src\Vibes.ASBManager.Infrastructure.Storage.File\Vibes.ASBManager.Infrastructure.Storage.File.csproj", "{9C3A9E19-186C-480B-9EA0-D6D6C2372774}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Vibes.ASBManager.Infrastructure.AzureServiceBus", "src\Vibes.ASBManager.Infrastructure.AzureServiceBus\Vibes.ASBManager.Infrastructure.AzureServiceBus.csproj", "{F22C5749-C173-418D-9A88-33AB39BA22CB}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -53,18 +55,6 @@ Global
 		{6BB21B77-BCFE-48FB-8DC3-3D87716B1C96}.Release|x64.Build.0 = Release|Any CPU
 		{6BB21B77-BCFE-48FB-8DC3-3D87716B1C96}.Release|x86.ActiveCfg = Release|Any CPU
 		{6BB21B77-BCFE-48FB-8DC3-3D87716B1C96}.Release|x86.Build.0 = Release|Any CPU
-		{203164B1-E9C2-4C29-8760-FC0F34913D23}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{203164B1-E9C2-4C29-8760-FC0F34913D23}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{203164B1-E9C2-4C29-8760-FC0F34913D23}.Debug|x64.ActiveCfg = Debug|Any CPU
-		{203164B1-E9C2-4C29-8760-FC0F34913D23}.Debug|x64.Build.0 = Debug|Any CPU
-		{203164B1-E9C2-4C29-8760-FC0F34913D23}.Debug|x86.ActiveCfg = Debug|Any CPU
-		{203164B1-E9C2-4C29-8760-FC0F34913D23}.Debug|x86.Build.0 = Debug|Any CPU
-		{203164B1-E9C2-4C29-8760-FC0F34913D23}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{203164B1-E9C2-4C29-8760-FC0F34913D23}.Release|Any CPU.Build.0 = Release|Any CPU
-		{203164B1-E9C2-4C29-8760-FC0F34913D23}.Release|x64.ActiveCfg = Release|Any CPU
-		{203164B1-E9C2-4C29-8760-FC0F34913D23}.Release|x64.Build.0 = Release|Any CPU
-		{203164B1-E9C2-4C29-8760-FC0F34913D23}.Release|x86.ActiveCfg = Release|Any CPU
-		{203164B1-E9C2-4C29-8760-FC0F34913D23}.Release|x86.Build.0 = Release|Any CPU
 		{7E4652A1-4279-4647-A94C-1925F820DB7D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{7E4652A1-4279-4647-A94C-1925F820DB7D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{7E4652A1-4279-4647-A94C-1925F820DB7D}.Debug|x64.ActiveCfg = Debug|Any CPU
@@ -89,6 +79,30 @@ Global
 		{45DC7D3E-152F-4710-9B1C-226EA5EAC7F8}.Release|x64.Build.0 = Release|Any CPU
 		{45DC7D3E-152F-4710-9B1C-226EA5EAC7F8}.Release|x86.ActiveCfg = Release|Any CPU
 		{45DC7D3E-152F-4710-9B1C-226EA5EAC7F8}.Release|x86.Build.0 = Release|Any CPU
+		{9C3A9E19-186C-480B-9EA0-D6D6C2372774}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9C3A9E19-186C-480B-9EA0-D6D6C2372774}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9C3A9E19-186C-480B-9EA0-D6D6C2372774}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{9C3A9E19-186C-480B-9EA0-D6D6C2372774}.Debug|x64.Build.0 = Debug|Any CPU
+		{9C3A9E19-186C-480B-9EA0-D6D6C2372774}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{9C3A9E19-186C-480B-9EA0-D6D6C2372774}.Debug|x86.Build.0 = Debug|Any CPU
+		{9C3A9E19-186C-480B-9EA0-D6D6C2372774}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9C3A9E19-186C-480B-9EA0-D6D6C2372774}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9C3A9E19-186C-480B-9EA0-D6D6C2372774}.Release|x64.ActiveCfg = Release|Any CPU
+		{9C3A9E19-186C-480B-9EA0-D6D6C2372774}.Release|x64.Build.0 = Release|Any CPU
+		{9C3A9E19-186C-480B-9EA0-D6D6C2372774}.Release|x86.ActiveCfg = Release|Any CPU
+		{9C3A9E19-186C-480B-9EA0-D6D6C2372774}.Release|x86.Build.0 = Release|Any CPU
+		{F22C5749-C173-418D-9A88-33AB39BA22CB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F22C5749-C173-418D-9A88-33AB39BA22CB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F22C5749-C173-418D-9A88-33AB39BA22CB}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{F22C5749-C173-418D-9A88-33AB39BA22CB}.Debug|x64.Build.0 = Debug|Any CPU
+		{F22C5749-C173-418D-9A88-33AB39BA22CB}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{F22C5749-C173-418D-9A88-33AB39BA22CB}.Debug|x86.Build.0 = Debug|Any CPU
+		{F22C5749-C173-418D-9A88-33AB39BA22CB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F22C5749-C173-418D-9A88-33AB39BA22CB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F22C5749-C173-418D-9A88-33AB39BA22CB}.Release|x64.ActiveCfg = Release|Any CPU
+		{F22C5749-C173-418D-9A88-33AB39BA22CB}.Release|x64.Build.0 = Release|Any CPU
+		{F22C5749-C173-418D-9A88-33AB39BA22CB}.Release|x86.ActiveCfg = Release|Any CPU
+		{F22C5749-C173-418D-9A88-33AB39BA22CB}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -96,8 +110,9 @@ Global
 	GlobalSection(NestedProjects) = preSolution
 		{83EF29A1-2293-4E94-AB2E-C21CF162DA7D} = {F21F8D0A-C815-4A7C-B197-091FCE2B84FE}
 		{6BB21B77-BCFE-48FB-8DC3-3D87716B1C96} = {F21F8D0A-C815-4A7C-B197-091FCE2B84FE}
-		{203164B1-E9C2-4C29-8760-FC0F34913D23} = {6B216B45-E0D7-4C28-BA6B-83C1D6CE0B94}
 		{7E4652A1-4279-4647-A94C-1925F820DB7D} = {DD93B0CE-40A0-405E-BED9-F74385967623}
 		{45DC7D3E-152F-4710-9B1C-226EA5EAC7F8} = {DD93B0CE-40A0-405E-BED9-F74385967623}
+		{F22C5749-C173-418D-9A88-33AB39BA22CB} = {6B216B45-E0D7-4C28-BA6B-83C1D6CE0B94}
+		{9C3A9E19-186C-480B-9EA0-D6D6C2372774} = {6B216B45-E0D7-4C28-BA6B-83C1D6CE0B94}
 	EndGlobalSection
 EndGlobal

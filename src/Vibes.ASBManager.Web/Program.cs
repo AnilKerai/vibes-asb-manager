@@ -1,28 +1,23 @@
 using MudBlazor.Services;
-using Vibes.ASBManager.Application.Interfaces;
-using Vibes.ASBManager.Infrastructure.ServiceBus;
-using Vibes.ASBManager.Infrastructure.Storage;
 using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage;
+using Vibes.ASBManager.Infrastructure.AzureServiceBus;
+using Vibes.ASBManager.Infrastructure.Storage.File;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
 
-// Add services to the container.
 builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();
 builder.Services.AddMudServices();
 builder.Services.AddScoped<ProtectedLocalStorage>();
 
-// Connection store (JSON file under App_Data)
-var dataDir = System.IO.Path.Combine(builder.Environment.ContentRootPath, "App_Data");
-try { System.IO.Directory.CreateDirectory(dataDir); } catch { }
-var jsonPath = System.IO.Path.Combine(dataDir, "connections.json");
-builder.Services.AddSingleton<IConnectionStore>(_ => new JsonConnectionStore(jsonPath));
+var dataDir = Path.Combine(builder.Environment.ContentRootPath, "App_Data");
+try { Directory.CreateDirectory(dataDir); } catch { }
+var jsonPath = Path.Combine(dataDir, "connections.json");
 
-// Service Bus services
-builder.Services.AddSingleton<IServiceBusAdmin, AzureServiceBusAdmin>();
-builder.Services.AddSingleton<IServiceBusMessaging, AzureServiceBusMessaging>();
+builder.Services.AddFileStorage(jsonPath);
+builder.Services.AddAzureServiceBusInfrastructure();
 
 var app = builder.Build();
 

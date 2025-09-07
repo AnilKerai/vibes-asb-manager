@@ -1,9 +1,9 @@
-using Vibes.ASBManager.Application.Interfaces;
-using Vibes.ASBManager.Application.Models;
 using Azure;
 using Azure.Messaging.ServiceBus.Administration;
+using Vibes.ASBManager.Application.Interfaces;
+using Vibes.ASBManager.Application.Models;
 
-namespace Vibes.ASBManager.Infrastructure.ServiceBus;
+namespace Vibes.ASBManager.Infrastructure.AzureServiceBus.ServiceBus;
 
 public sealed class AzureServiceBusAdmin : IServiceBusAdmin
 {
@@ -56,6 +56,32 @@ public sealed class AzureServiceBusAdmin : IServiceBusAdmin
         var client = new ServiceBusAdministrationClient(connectionString);
         await client.DeleteTopicAsync(topicName, ct).ConfigureAwait(false);
     }
+
+    public async Task<IReadOnlyList<TopicSummary>> ListTopicsAsync(string connectionString, CancellationToken ct = default)
+    {
+        var client = new ServiceBusAdministrationClient(connectionString);
+        var result = new List<TopicSummary>();
+        await foreach (var tp in client.GetTopicsAsync(ct))
+        {
+            var subCount = 0;
+            await foreach (var _ in client.GetSubscriptionsAsync(tp.Name, ct))
+            {
+                subCount++;
+            }
+            long scheduled = 0;
+            try
+            {
+                var runtime = await client.GetTopicRuntimePropertiesAsync(tp.Name, ct).ConfigureAwait(false);
+                scheduled = (long)runtime.Value.ScheduledMessageCount;
+            }
+            catch (RequestFailedException)
+            {
+            }
+            result.Add(new TopicSummary { Name = tp.Name, SubscriptionCount = subCount, ScheduledMessageCount = scheduled });
+        }
+        return result.OrderBy(t => t.Name).ToList();
+    }
+
     public async Task<IReadOnlyList<QueueSummary>> ListQueuesAsync(string connectionString, CancellationToken ct = default)
     {
         var client = new ServiceBusAdministrationClient(connectionString);
@@ -69,35 +95,7 @@ public sealed class AzureServiceBusAdmin : IServiceBusAdmin
                 DeadLetterMessageCount = (long)qrp.DeadLetterMessageCount
             });
         }
-        // Stable order
         return result.OrderBy(q => q.Name).ToList();
-    }
-
-    public async Task<IReadOnlyList<TopicSummary>> ListTopicsAsync(string connectionString, CancellationToken ct = default)
-    {
-        var client = new ServiceBusAdministrationClient(connectionString);
-        var result = new List<TopicSummary>();
-        await foreach (var tp in client.GetTopicsAsync(ct))
-        {
-            var subCount = 0;
-            await foreach (var _ in client.GetSubscriptionsAsync(tp.Name, ct))
-            {
-                subCount++;
-            }
-            // Try to get runtime props (best-effort)
-            long scheduled = 0;
-            try
-            {
-                var runtime = await client.GetTopicRuntimePropertiesAsync(tp.Name, ct).ConfigureAwait(false);
-                scheduled = (long)runtime.Value.ScheduledMessageCount;
-            }
-            catch (RequestFailedException)
-            {
-                // ignore and keep scheduled = 0
-            }
-            result.Add(new TopicSummary { Name = tp.Name, SubscriptionCount = subCount, ScheduledMessageCount = scheduled });
-        }
-        return result.OrderBy(t => t.Name).ToList();
     }
 
     public async Task<IReadOnlyList<SubscriptionSummary>> ListSubscriptionsAsync(string connectionString, string topicName, CancellationToken ct = default)

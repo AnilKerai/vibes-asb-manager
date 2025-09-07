@@ -19,8 +19,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Vibes.ASBManager.Application\Vibes.ASBManager.Application.csproj" />
-    <ProjectReference Include="..\Vibes.ASBManager.Infrastructure\Vibes.ASBManager.Infrastructure.csproj" />
     <ProjectReference Include="..\Vibes.ASBManager.ServiceDefaults\Vibes.ASBManager.ServiceDefaults.csproj" />
+    <ProjectReference Include="..\Vibes.ASBManager.Infrastructure.Storage.File\Vibes.ASBManager.Infrastructure.Storage.File.csproj" />
+    <ProjectReference Include="..\Vibes.ASBManager.Infrastructure.AzureServiceBus\Vibes.ASBManager.Infrastructure.AzureServiceBus.csproj" />
   </ItemGroup>
     
 </Project>
