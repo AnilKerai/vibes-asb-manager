@@ -5,35 +5,19 @@ If you don't want to clone the source code, you can still run the app by creatin
 ```yaml
 version: "3.9"
 services:
-  db:
-    image: postgres:16
-    environment:
-      POSTGRES_USER: asb
-      POSTGRES_PASSWORD: asb
-      POSTGRES_DB: asbdb
-    volumes:
-      - asbpgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U asb -d asbdb"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-
   web:
     image: anilkerai/vibes-asb-manager-web:latest
     pull_policy: always
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080
-      ConnectionStrings__asbdb: Host=db;Port=5432;Username=asb;Password=asb;Database=asbdb
-    depends_on:
-      db:
-        condition: service_healthy
     ports:
       - "8080:8080"
+    volumes:
+      - appdata:/app/App_Data
 
 volumes:
-  asbpgdata:
+  appdata:
 ```
 
 Then run:
@@ -42,7 +26,7 @@ Then run:
 docker compose up -d
 ```
 
-This starts Postgres and pulls the latest published image of the app — no source required.
+This starts the Web app and persists `App_Data` via a volume — no source required.
 
 ---
 
@@ -85,12 +69,12 @@ Pinning a version ensures reproducible environments. Use `:latest` for always-up
 
 A Blazor Server tool for developers to explore and manage Azure Service Bus namespaces.
 
-This repo supports two local development workflows:
+Storage: The app persists connections in a JSON file at `App_Data/connections.json`. No database is required.
 
-- .NET Aspire (AppHost) — one command to run the app + Postgres
-- Docker Compose — containerized Postgres + the Web app
+Local dev options:
 
-The app persists connections in Postgres. A connection string named `asbdb` is required at runtime.
+- .NET Aspire (AppHost) — orchestrates the Web app only (no DB)
+- Docker Compose — pulls the published image and persists `App_Data` via a volume
 
 ---
 
@@ -103,7 +87,7 @@ The app persists connections in Postgres. A connection string named `asbdb` is r
 
 ## Option A: Run with .NET Aspire (recommended)
 
-This spins up Postgres and the Web app with service defaults (OpenTelemetry, health endpoints in dev, etc.).
+This starts the Web app with service defaults (OpenTelemetry, health endpoints in dev, etc.). No database is used.
 
 ```bash
 # from repo root
@@ -111,13 +95,13 @@ DOTNET_CLI_TELEMETRY_OPTOUT=1 dotnet run -p src/Vibes.ASBManager.AppHost
 ```
 
 - Open the Web URL printed in the console.
-- Postgres data is stored in a Docker volume managed by Aspire and persists across restarts.
+- Connection data is stored in `App_Data/connections.json`.
 
 ---
 
 ## Option B: Run with Docker Compose (uses published image)
 
-This uses `docker-compose.yml` to run Postgres + the Web app. No .NET Aspire required. The `web` service pulls the published image `anilkerai/vibes-asb-manager-web:latest`.
+This uses `docker-compose.yml` to run the Web app (no DB). The `web` service pulls the published image `anilkerai/vibes-asb-manager-web:latest` and mounts a volume at `/app/App_Data` for persistence.
 
 ```bash
 # from repo root
@@ -125,13 +109,12 @@ docker compose up -d
 # app will be available at http://localhost:8080
 ```
 
-- The Web app uses the connection string `Host=db;Port=5432;Username=asb;Password=asb;Database=asbdb` provided via environment variables.
-- Postgres data persists in the `asbpgdata` Docker volume.
+- Connection data persists in the `appdata` Docker volume (mounted to `/app/App_Data`).
 
 Reset data (Compose):
 
 ```bash
-docker compose down -v  # drops containers and the asbpgdata volume
+docker compose down -v  # drops containers and the appdata volume
 ```
 
 ### Pin to a specific image version with .env
@@ -152,34 +135,15 @@ docker compose up -d
 
 Compose will substitute `WEB_IMAGE` into `docker-compose.yml` (`image: ${WEB_IMAGE:-anilkerai/vibes-asb-manager-web:latest}`), so teams can pin versions consistently without changing the YAML.
 
-## Option C: Run the Web app against your own Postgres
+## Option C: Run locally (no Docker)
 
-If you already have a Postgres instance running locally or in your infra, provide the `asbdb` connection string.
-
-Using environment variables:
-
-- macOS/Linux (bash/zsh):
+From the repo root:
 
 ```bash
-export ConnectionStrings__asbdb="Host=localhost;Port=5432;Username=postgres;Password=postgres;Database=asbdb"
 dotnet run -p src/Vibes.ASBManager.Web
 ```
 
-- Windows PowerShell:
-
-```powershell
-$env:ConnectionStrings__asbdb="Host=localhost;Port=5432;Username=postgres;Password=postgres;Database=asbdb"
-dotnet run -p src/Vibes.ASBManager.Web
-```
-
-Or use .NET User Secrets (from `src/Vibes.ASBManager.Web`):
-
-```bash
-cd src/Vibes.ASBManager.Web
-dotnet user-secrets init
-dotnet user-secrets set "ConnectionStrings:asbdb" "Host=localhost;Port=5432;Username=postgres;Password=postgres;Database=asbdb"
-dotnet run
-```
+The app will store data in `src/Vibes.ASBManager.Web/App_Data/connections.json`.
 
 ---
 
@@ -187,7 +151,7 @@ dotnet run
 
 - `src/Vibes.ASBManager.Web/` — Blazor Server app
 - `src/Vibes.ASBManager.Application/` — app interfaces and contracts
-- `src/Vibes.ASBManager.Infrastructure/` — Postgres store, Service Bus implementations
+- `src/Vibes.ASBManager.Infrastructure/` — JSON connection store and Service Bus implementations
 - `src/Vibes.ASBManager.Domain/` — domain models (e.g., `ConnectionInfo` with `Pinned`)
 - `src/Vibes.ASBManager.AppHost/` — .NET Aspire orchestrator (dev-only)
 - `src/Vibes.ASBManager.ServiceDefaults/` — shared service defaults (OpenTelemetry, health checks)
@@ -207,8 +171,8 @@ These are mainly for local diagnostics and Compose/Aspire orchestration.
 
 ## Troubleshooting
 
-- Missing connection string `asbdb`:
-  - Provide the env var (see Option C), or run via Aspire/Compose.
+- App_Data not writable:
+  - Ensure the running user has write permission to `App_Data`. In Docker, a named volume is mounted at `/app/App_Data`.
 - Port already in use:
   - Change the exposed port in `docker-compose.yml` or set `ASPNETCORE_URLS` when running locally.
 - Docker Desktop issues:

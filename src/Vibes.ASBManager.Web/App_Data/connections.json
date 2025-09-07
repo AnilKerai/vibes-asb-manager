@@ -1,0 +1,16 @@
+[
+  {
+    "Id": "ade04432cd6947c5855b14b9f6816293",
+    "Name": "sandbox-ak",
+    "ConnectionString": "Endpoint=sb://sandbox-ak.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=IMtTDVltoGf3TyWXCN\u002BB7U2RFNI0leGBc\u002BASbH13cw0=",
+    "Pinned": false,
+    "CreatedUtc": "2025-09-07T07:37:34.116414+00:00"
+  },
+  {
+    "Id": "134641678b2841cc89580e623c3ebf39",
+    "Name": "sb-ak47-sandbox",
+    "ConnectionString": "Endpoint=sb://sb-ak47-sandbox.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=9qD8LSWVdHCVCpq1Zcwl1wNTxJjGQkWXD\u002BASbK7j7HE=",
+    "Pinned": true,
+    "CreatedUtc": "2025-09-07T07:37:57.078811+00:00"
+  }
+]

@@ -19,6 +19,8 @@ WORKDIR /app
 COPY --from=build /app/publish .
 
 # Configure ASP.NET Core
+RUN mkdir -p /app/App_Data && \
+    chown -R 0:0 /app && chmod -R 777 /app/App_Data
 ENV ASPNETCORE_URLS=http://+:8080
 EXPOSE 8080
 

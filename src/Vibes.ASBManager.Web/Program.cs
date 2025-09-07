@@ -14,13 +14,11 @@ builder.Services.AddServerSideBlazor();
 builder.Services.AddMudServices();
 builder.Services.AddScoped<ProtectedLocalStorage>();
 
-// Connection store (PostgreSQL via Aspire connection string)
-var pgConn = builder.Configuration.GetConnectionString("asbdb");
-if (string.IsNullOrWhiteSpace(pgConn))
-{
-    throw new InvalidOperationException("Missing connection string 'asbdb'. Run via Aspire AppHost or provide ConnectionStrings:asbdb environment variable.");
-}
-builder.Services.AddSingleton<IConnectionStore>(_ => new SqlConnectionStore(pgConn));
+// Connection store (JSON file under App_Data)
+var dataDir = System.IO.Path.Combine(builder.Environment.ContentRootPath, "App_Data");
+try { System.IO.Directory.CreateDirectory(dataDir); } catch { }
+var jsonPath = System.IO.Path.Combine(dataDir, "connections.json");
+builder.Services.AddSingleton<IConnectionStore>(_ => new JsonConnectionStore(jsonPath));
 
 // Service Bus services
 builder.Services.AddSingleton<IServiceBusAdmin, AzureServiceBusAdmin>();
