@@ -1,28 +1,25 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.Extensions.Options;
 using Vibes.ASBManager.Application.Interfaces;
 using Vibes.ASBManager.Domain.Models;
+using Vibes.ASBManager.Infrastructure.Storage.File.IO;
+using Vibes.ASBManager.Infrastructure.Storage.File.Options;
 
 namespace Vibes.ASBManager.Infrastructure.Storage.File.Storage;
 
-[ExcludeFromCodeCoverage]
-public sealed class JsonConnectionStore : IConnectionStore
+public sealed class JsonConnectionStore(
+    IOptionsMonitor<JsonFileStorageOptions> storeOptions, 
+    IFileSystem fileSystem
+) : IConnectionStore
 {
-    private readonly string _filePath;
+    private readonly string _filePath = storeOptions.CurrentValue.FilePath;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private static readonly JsonSerializerOptions Options = new()
     {
         WriteIndented = true,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
-
-    public JsonConnectionStore(string filePath)
-    {
-        if (string.IsNullOrWhiteSpace(filePath))
-            throw new ArgumentException("File path must be provided", nameof(filePath));
-        _filePath = filePath;
-    }
 
     public async Task<IReadOnlyList<ConnectionInfo>> GetAllAsync(CancellationToken ct = default)
     {
@@ -103,11 +100,11 @@ public sealed class JsonConnectionStore : IConnectionStore
     private async Task<List<ConnectionInfo>> ReadAsync(CancellationToken ct)
     {
         EnsureDirectory();
-        if (!System.IO.File.Exists(_filePath))
+        if (!fileSystem.Exists(_filePath))
         {
             return new List<ConnectionInfo>();
         }
-        await using var fs = new FileStream(_filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+        await using var fs = fileSystem.OpenRead(_filePath);
         try
         {
             var data = await JsonSerializer.DeserializeAsync<List<ConnectionInfo>>(fs, Options, ct).ConfigureAwait(false);
@@ -124,17 +121,17 @@ public sealed class JsonConnectionStore : IConnectionStore
         EnsureDirectory();
         // Write to temp then move to avoid partial writes
         var tmp = _filePath + ".tmp";
-        await using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None))
+        await using (var fs = fileSystem.CreateWrite(tmp))
         {
             await JsonSerializer.SerializeAsync(fs, list, Options, ct).ConfigureAwait(false);
         }
-        if (System.IO.File.Exists(_filePath))
+        if (fileSystem.Exists(_filePath))
         {
-            System.IO.File.Replace(tmp, _filePath, destinationBackupFileName: null);
+            fileSystem.Replace(tmp, _filePath);
         }
         else
         {
-            System.IO.File.Move(tmp, _filePath);
+            fileSystem.Move(tmp, _filePath);
         }
     }
 
