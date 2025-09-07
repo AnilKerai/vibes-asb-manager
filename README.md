@@ -60,7 +60,7 @@ Set the following GitHub repository secrets:
 3. Update your Compose file to pin to that version (recommended):
    ```yaml
    web:
-     image: anilkerai/vibes-asb-manager-web:1.1.0
+     image: anilkerai/vibes-asb-manager-web:1.2.0
      pull_policy: always
    ```
 
@@ -156,7 +156,7 @@ chmod +x scripts/run-docker-mac.sh
 ./scripts/run-docker-mac.sh
 
 # override defaults (examples)
-WEB_IMAGE=anilkerai/vibes-asb-manager-web:1.1.0 \
+WEB_IMAGE=anilkerai/vibes-asb-manager-web:1.2.0 \
 PORT=9001 VOLUME_NAME=my-asb-data CONTAINER_NAME=my-asb \
 ./scripts/run-docker-mac.sh
 ```
@@ -181,7 +181,7 @@ You can control which image tag Compose pulls without editing YAML using a `.env
 1) Create a `.env` file in the repo root with the tag you want:
 
 ```env
-WEB_IMAGE=anilkerai/vibes-asb-manager-web:1.1.0
+WEB_IMAGE=anilkerai/vibes-asb-manager-web:1.2.0
 ```
 
 2) Start Compose as usual:
