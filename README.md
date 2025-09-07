@@ -116,7 +116,7 @@ Set the following GitHub repository secrets:
 3. Update your Compose file to pin to that version (recommended):
    ```yaml
    web:
-     image: anilkerai/vibes-asb-manager-web:1.3.0
+     image: anilkerai/vibes-asb-manager-web:1.3.1
      pull_policy: always
    ```
 
