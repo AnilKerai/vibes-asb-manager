@@ -1,6 +1,62 @@
-### Run with a minimal Compose file (without cloning the repo)
+# Vibes Azure Service Bus Manager
 
-If you don't want to clone the source code, you can still run the app by creating a minimal `docker-compose.yml` locally:
+A Blazor Server tool to explore and manage Azure Service Bus namespaces.
+
+Connections are stored locally in `App_Data/connections.json` so you can run it anywhere without a database. Docker is the easiest way to get started.
+
+## Disclaimer
+
+I vibe-coded this tool. And yes, I hate myself for using that term! 😅
+
+It is however, a useful technique to get a quick dev tool up and running though, so I don't apologize! 😂
+
+With that in mind, feel free to suggest / make improvements - i'm not particularly precious about the code.
+
+## Key features
+
+- Browse queues, topics and subscriptions in a simple tree.
+- Peek active and dead-letter messages with paging and optional live refresh.
+- View message details and resubmit from DLQ; optionally remove the original from DLQ.
+- Send to queues or topics with custom properties, content type, and scheduling; send multiple with an interval.
+- Manage subscriptions and rules (SQL and correlation) with create/delete.
+- Edit entity defaults (TTL and dead-letter on expiration) for queues, topics, subscriptions.
+- Pinned connections and quick search for large lists.
+- Data persisted to JSON; no external database required.
+
+## Quick start (recommended): Docker CLI
+
+Run the container and persist connection data in a named volume:
+
+```bash
+# optional: create the volume (auto-created on first run)
+docker volume create vibes-asb-manager-data
+
+docker run -d \
+  --pull always \
+  --name vibes-asb-manager \
+  -p 9000:8080 \
+  -v vibes-asb-manager-data:/app/App_Data \
+  -e ASPNETCORE_ENVIRONMENT=Development \
+  anilkerai/vibes-asb-manager-web:latest
+
+# open http://localhost:9000
+```
+
+Pin to a specific version:
+
+```bash
+docker run -d \
+  --name vibes-asb-manager \
+  -p 9000:8080 \
+  -v vibes-asb-manager-data:/app/App_Data \
+  anilkerai/vibes-asb-manager-web:1.2.3
+```
+
+Upgrade later by pulling a new tag and recreating the container. Reset data by removing the named volume if needed.
+
+## Alternative: Docker Compose (without cloning the repo)
+
+Create a minimal `docker-compose.yml` locally and start the app:
 
 ```yaml
 version: "3.9"
@@ -65,142 +121,6 @@ Set the following GitHub repository secrets:
    ```
 
 Pinning a version ensures reproducible environments. Use `:latest` for always-up-to-date dev environments.
-# Vibes ASB Manager
-
-A Blazor Server tool for developers to explore and manage Azure Service Bus namespaces.
-
-Storage: The app persists connections in a JSON file at `App_Data/connections.json`. No database is required.
-
-Local dev options:
-
-- Docker Compose — pulls the published image and persists `App_Data` via a volume
-- Local run — `dotnet run -p src/Vibes.ASBManager.Web`
-
----
-
-## Prerequisites
-
-- .NET 9 SDK
-- Docker Desktop (for Docker Compose)
-
----
-
-## Option A: Run locally (no Docker)
-
-From the repo root:
-
-```bash
-dotnet run -p src/Vibes.ASBManager.Web
-```
-
-The app stores data in `src/Vibes.ASBManager.Web/App_Data/connections.json`.
-
----
-
-## Option B: Run with Docker Compose (uses published image)
-
-This uses `docker-compose.yml` to run the Web app (no DB). The `web` service pulls the published image `anilkerai/vibes-asb-manager-web:latest` and mounts a volume at `/app/App_Data` for persistence.
-
-```bash
-# from repo root
-docker compose up -d
-# app will be available at http://localhost:9000
-```
-
-- Connection data persists in the `appdata` Docker volume (mounted to `/app/App_Data`).
-
-Reset data (Compose):
-
-```bash
-docker compose down -v  # drops containers and the appdata volume
-```
-
-### Run with a single Docker command (with volume persistence)
-
-You can run the container directly and persist connection data using a named volume mounted to `/app/App_Data`.
-
-```bash
-# optional: create the volume explicitly (it will be auto-created on first run otherwise)
-docker volume create vibes-asb-manager-data
-
-docker run -d \
-  --pull always
-  --name vibes-asb-manager \
-  -p 9000:8080 \
-  -v vibes-asb-manager-data:/app/App_Data \
-  -e ASPNETCORE_ENVIRONMENT=Development \
-  anilkerai/vibes-asb-manager-web:latest
-```
-
-Pin to a specific version:
-
-```bash
-docker run -d \
-  --name vibes-asb-manager \
-  -p 9000:8080 \
-  -v vibes-asb-manager-data:/app/App_Data \
-  anilkerai/vibes-asb-manager-web:1.2.3
-```
-
-### Quick start scripts (macOS/Linux and Windows)
-
-Use the helper scripts to run the container and open your browser to http://localhost:9000 with a persistent volume:
-
-- macOS/Linux:
-
-```bash
-# one-time: make the script executable
-chmod +x scripts/run-docker-mac.sh
-
-# run with defaults (image :latest, port 9000, volume "vibes-asb-manager-data")
-./scripts/run-docker-mac.sh
-
-# override defaults (examples)
-WEB_IMAGE=anilkerai/vibes-asb-manager-web:1.1.0 \
-PORT=9001 VOLUME_NAME=my-asb-data CONTAINER_NAME=my-asb \
-./scripts/run-docker-mac.sh
-```
-
-- Windows (PowerShell):
-
-```powershell
-# run with defaults
-.\\scripts\\run-docker-win.ps1
-
-# override defaults (examples)
-.\\scripts\\run-docker-win.ps1 -Image anilkerai/vibes-asb-manager-web:1.2.3 -Port 9001 -VolumeName my-asb-data -ContainerName my-asb
-
-# if you hit execution policy restrictions
-powershell -ExecutionPolicy Bypass -File .\\scripts\\run-docker-win.ps1
-```
-
-### Pin to a specific image version with .env
-
-You can control which image tag Compose pulls without editing YAML using a `.env` file (already git-ignored).
-
-1) Create a `.env` file in the repo root with the tag you want:
-
-```env
-WEB_IMAGE=anilkerai/vibes-asb-manager-web:1.1.0
-```
-
-2) Start Compose as usual:
-
-```bash
-docker compose up -d
-```
-
-Compose will substitute `WEB_IMAGE` into `docker-compose.yml` (`image: ${WEB_IMAGE:-anilkerai/vibes-asb-manager-web:latest}`), so teams can pin versions consistently without changing the YAML.
-
-## Option C: Run locally (no Docker)
-
-From the repo root:
-
-```bash
-dotnet run -p src/Vibes.ASBManager.Web
-```
-
-The app will store data in `src/Vibes.ASBManager.Web/App_Data/connections.json`.
 
 ---
 
@@ -208,9 +128,11 @@ The app will store data in `src/Vibes.ASBManager.Web/App_Data/connections.json`.
 
 - `src/Vibes.ASBManager.Web/` — Blazor Server app
 - `src/Vibes.ASBManager.Application/` — app interfaces and contracts
-- `src/Vibes.ASBManager.Infrastructure/` — JSON connection store and Service Bus implementations
+- `src/Vibes.ASBManager.Infrastructure.AzureServiceBus/` — Service Bus implementations
+- `src/Vibes.ASBManager.Infrastructure.Storeage.File/` — File connection store implementations
 - `src/Vibes.ASBManager.Domain/` — domain models (e.g., `ConnectionInfo` with `Pinned`)
 - `src/Vibes.ASBManager.ServiceDefaults/` — shared service defaults (OpenTelemetry, health checks)
+- `tests/Vibes.ASBManager.Tests.Unit/` — unit tests for valuable code
 
 ---
 
@@ -235,15 +157,3 @@ These are mainly for local diagnostics and Compose orchestration.
   - Ensure it is running and has sufficient resources/disk space.
 
 ---
-
-## Build locally (without running)
-
-```bash
-dotnet build Vibes.ASBManager.sln
-```
-
----
-
-## License
-
-Internal developer tool. Add license here if you plan to distribute externally.
