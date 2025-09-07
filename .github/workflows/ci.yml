@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+    paths-ignore:
+      - "**/*.md"
+  pull_request:
+    branches: ["**"]
+    paths-ignore:
+      - "**/*.md"
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Restore
+        run: dotnet restore Vibes.ASBManager.sln
+
+      - name: Build
+        run: dotnet build Vibes.ASBManager.sln --configuration Release --no-restore -nologo
+
+      - name: Test
+        run: dotnet test Vibes.ASBManager.sln --configuration Release --no-build -nologo

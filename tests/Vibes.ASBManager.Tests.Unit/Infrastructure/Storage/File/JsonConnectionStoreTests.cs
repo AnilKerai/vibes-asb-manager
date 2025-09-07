@@ -3,6 +3,7 @@ using Vibes.ASBManager.Domain.Models;
 using Vibes.ASBManager.Infrastructure.Storage.File.IO;
 using Vibes.ASBManager.Infrastructure.Storage.File.Options;
 using Vibes.ASBManager.Infrastructure.Storage.File.Storage;
+using Vibes.ASBManager.Tests.Unit.TestDoubles;
 
 // Avoid collision with test namespace segment 'File'
 using IOFile = System.IO.File;
@@ -28,6 +29,14 @@ public class JsonConnectionStoreTests : IDisposable
         return new JsonConnectionStore(monitor, new FileSystemAdapter());
     }
 
+    private static JsonConnectionStore CreateStoreFake(out FakeFileSystem fs, string path = "connections.json")
+    {
+        fs = new FakeFileSystem();
+        var opts = new JsonFileStorageOptions { FilePath = path };
+        var monitor = new StaticOptionsMonitor<JsonFileStorageOptions>(opts);
+        return new JsonConnectionStore(monitor, fs);
+    }
+
     private sealed class StaticOptionsMonitor<T> : IOptionsMonitor<T>
     {
         private readonly T _current;
@@ -46,7 +55,7 @@ public class JsonConnectionStoreTests : IDisposable
     [Fact]
     public async Task Save_populates_Id_and_CreatedUtc_when_missing()
     {
-        var store = CreateStore(_filePath);
+        var store = CreateStoreFake(out _);
         var c = new ConnectionInfo
         {
             Id = string.Empty,
@@ -120,10 +129,9 @@ public class JsonConnectionStoreTests : IDisposable
     [Fact]
     public async Task Corrupted_json_returns_empty_list()
     {
-        IODirectory.CreateDirectory(Path.GetDirectoryName(_filePath)!);
-        await IOFile.WriteAllTextAsync(_filePath, "{ not: valid json ]");
-
-        var store = CreateStore(_filePath);
+        var path = "connections.json";
+        var store = CreateStoreFake(out var fs, path);
+        fs.SetFileBytes(path, System.Text.Encoding.UTF8.GetBytes("{ not: valid json ]"));
         var list = await store.GetAllAsync();
         Assert.Empty(list);
     }
@@ -131,7 +139,7 @@ public class JsonConnectionStoreTests : IDisposable
     [Fact]
     public async Task Concurrent_saves_do_not_corrupt_file()
     {
-        var store = CreateStore(_filePath);
+        var store = CreateStoreFake(out _);
         var tasks = Enumerable.Range(0, 50)
             .Select(i => store.SaveAsync(new ConnectionInfo { Name = $"Conn-{i}" }));
 
