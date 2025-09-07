@@ -60,7 +60,7 @@ Set the following GitHub repository secrets:
 3. Update your Compose file to pin to that version (recommended):
    ```yaml
    web:
-     image: anilkerai/vibes-asb-manager-web:1.2.3
+     image: anilkerai/vibes-asb-manager-web:1.0.1
      pull_policy: always
    ```
 
@@ -180,7 +180,7 @@ You can control which image tag Compose pulls without editing YAML using a `.env
 1) Create a `.env` file in the repo root with the tag you want:
 
 ```env
-WEB_IMAGE=anilkerai/vibes-asb-manager-web:1.2.3
+WEB_IMAGE=anilkerai/vibes-asb-manager-web:1.0.1
 ```
 
 2) Start Compose as usual:
