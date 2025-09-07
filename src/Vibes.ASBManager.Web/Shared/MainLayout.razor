@@ -17,8 +17,6 @@
 <MudLayout>
     <MudAppBar Color="Color.Primary" Elevation="1">
         <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" OnClick="ToggleDrawer" />
-        <MudIcon Icon="@Icons.Material.Filled.Hub" Class="mr-2" />
-        <MudText Typo="Typo.h6">Vibes Azure Service Bus Manager</MudText>
         <MudSpacer />
         <MudIconButton Color="Color.Inherit"
                        Icon="@(_isDarkMode ? Icons.Material.Filled.LightMode : Icons.Material.Filled.DarkMode)"
@@ -30,7 +28,16 @@
                Anchor="Anchor.Left"
                ClipMode="DrawerClipMode.Never">
         <MudDrawerHeader>
-            <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="w-100">
+            <MudStack Row="false" AlignItems="AlignItems.Center" Justify="Justify.FlexStart" Class="w-100">
+                <MudImage
+                    Src="logo.png"
+                    Alt="Logo"
+                    Class="rounded-lg ma-10"
+                    Width="150"
+                    Height="150"
+                    ObjectFit="ObjectFit.Cover"
+                    ObjectPosition="ObjectPosition.Center"
+                />
                 <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenAddDialog">Add Connection</MudButton>
             </MudStack>
         </MudDrawerHeader>
