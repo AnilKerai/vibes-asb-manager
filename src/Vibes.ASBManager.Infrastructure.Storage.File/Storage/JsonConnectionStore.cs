@@ -13,7 +13,10 @@ public sealed class JsonConnectionStore(
     IFileSystem fileSystem
 ) : IConnectionStore
 {
-    private readonly string _filePath = storeOptions.CurrentValue.FilePath;
+    private readonly string _filePath = string.IsNullOrWhiteSpace(storeOptions.CurrentValue.FilePath)
+        ? throw new ArgumentException("JsonFileStorageOptions.FilePath must be provided", nameof(storeOptions))
+        : storeOptions.CurrentValue.FilePath;
+    private readonly IFileSystem _fs = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
     private readonly SemaphoreSlim _gate = new(1, 1);
     private static readonly JsonSerializerOptions Options = new()
     {
@@ -100,11 +103,11 @@ public sealed class JsonConnectionStore(
     private async Task<List<ConnectionInfo>> ReadAsync(CancellationToken ct)
     {
         EnsureDirectory();
-        if (!fileSystem.Exists(_filePath))
+        if (!_fs.Exists(_filePath))
         {
             return new List<ConnectionInfo>();
         }
-        await using var fs = fileSystem.OpenRead(_filePath);
+        await using var fs = _fs.OpenRead(_filePath);
         try
         {
             var data = await JsonSerializer.DeserializeAsync<List<ConnectionInfo>>(fs, Options, ct).ConfigureAwait(false);
@@ -121,17 +124,17 @@ public sealed class JsonConnectionStore(
         EnsureDirectory();
         // Write to temp then move to avoid partial writes
         var tmp = _filePath + ".tmp";
-        await using (var fs = fileSystem.CreateWrite(tmp))
+        await using (var fs = _fs.CreateWrite(tmp))
         {
             await JsonSerializer.SerializeAsync(fs, list, Options, ct).ConfigureAwait(false);
         }
-        if (fileSystem.Exists(_filePath))
+        if (_fs.Exists(_filePath))
         {
-            fileSystem.Replace(tmp, _filePath);
+            _fs.Replace(tmp, _filePath);
         }
         else
         {
-            fileSystem.Move(tmp, _filePath);
+            _fs.Move(tmp, _filePath);
         }
     }
 

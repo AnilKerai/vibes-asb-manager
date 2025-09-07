@@ -8,6 +8,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <PackageReference Include="Azure.Messaging.ServiceBus" Version="7.20.1"/>
         <PackageReference Include="coverlet.collector" Version="6.0.2"/>
         <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0"/>
         <PackageReference Include="xunit" Version="2.9.2"/>
@@ -20,6 +21,7 @@
 
     <ItemGroup>
         <ProjectReference Include="..\..\src\Vibes.ASBManager.Infrastructure.Storage.File\Vibes.ASBManager.Infrastructure.Storage.File.csproj" />
+        <ProjectReference Include="..\..\src\Vibes.ASBManager.Infrastructure.AzureServiceBus\Vibes.ASBManager.Infrastructure.AzureServiceBus.csproj" />
     </ItemGroup>
 
 </Project>

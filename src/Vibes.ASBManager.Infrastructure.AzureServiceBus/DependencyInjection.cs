@@ -10,6 +10,7 @@ public static class DependencyInjection
 {
     public static void AddAzureServiceBusInfrastructure(this IServiceCollection services)
     {
+        services.AddSingleton<IRuleFormatter, RuleFormatter>();
         services.AddSingleton<IServiceBusAdmin, AzureServiceBusAdmin>();
         services.AddSingleton<IServiceBusMessaging, AzureServiceBusMessaging>();
     }
