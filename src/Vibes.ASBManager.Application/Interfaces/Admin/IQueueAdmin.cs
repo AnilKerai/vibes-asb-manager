@@ -4,7 +4,7 @@ namespace Vibes.ASBManager.Application.Interfaces;
 
 public interface IQueueAdmin
 {
-    Task<IReadOnlyList<QueueSummary>> ListQueuesAsync(string connectionString, CancellationToken ct = default);
+    Task<IReadOnlyList<QueueSummary>> ListQueuesAsync(string connectionString, CancellationToken cancellationToken = default);
     Task CreateQueueAsync(
         string connectionString,
         string queueName,
@@ -16,11 +16,11 @@ public interface IQueueAdmin
         bool deadLetterOnMessageExpiration,
         string? forwardTo,
         string? forwardDeadLetteredMessagesTo,
-        CancellationToken ct = default);
-    Task DeleteQueueAsync(string connectionString, string queueName, CancellationToken ct = default);
+        CancellationToken cancellationToken = default);
+    Task DeleteQueueAsync(string connectionString, string queueName, CancellationToken cancellationToken = default);
 
-    Task<QueueSettings> GetQueueSettingsAsync(string connectionString, string queueName, CancellationToken ct = default);
-    Task UpdateQueueSettingsAsync(string connectionString, string queueName, TimeSpan defaultMessageTimeToLive, bool deadLetteringOnMessageExpiration, CancellationToken ct = default);
+    Task<QueueSettings> GetQueueSettingsAsync(string connectionString, string queueName, CancellationToken cancellationToken = default);
+    Task UpdateQueueSettingsAsync(string connectionString, string queueName, TimeSpan defaultMessageTimeToLive, bool deadLetteringOnMessageExpiration, CancellationToken cancellationToken = default);
     Task UpdateQueuePropertiesAsync(
         string connectionString,
         string queueName,
@@ -29,5 +29,5 @@ public interface IQueueAdmin
         bool enableBatchedOperations,
         string? forwardTo,
         string? forwardDeadLetteredMessagesTo,
-        CancellationToken ct = default);
+        CancellationToken cancellationToken = default);
 }

@@ -4,8 +4,8 @@ namespace Vibes.ASBManager.Application.Interfaces;
 
 public interface ISubscriptionRuleAdmin
 {
-    Task<IReadOnlyList<SubscriptionRuleInfo>> ListSubscriptionRulesAsync(string connectionString, string topicName, string subscriptionName, CancellationToken ct = default);
-    Task CreateSubscriptionSqlRuleAsync(string connectionString, string topicName, string subscriptionName, string ruleName, string sqlExpression, string? sqlAction = null, CancellationToken ct = default);
+    Task<IReadOnlyList<SubscriptionRuleInfo>> ListSubscriptionRulesAsync(string connectionString, string topicName, string subscriptionName, CancellationToken cancellationToken = default);
+    Task CreateSubscriptionSqlRuleAsync(string connectionString, string topicName, string subscriptionName, string ruleName, string sqlExpression, string? sqlAction = null, CancellationToken cancellationToken = default);
     Task CreateSubscriptionCorrelationRuleAsync(
         string connectionString,
         string topicName,
@@ -19,6 +19,6 @@ public interface ISubscriptionRuleAdmin
         string? sessionId,
         string? contentType,
         Dictionary<string, string>? applicationProperties = null,
-        CancellationToken ct = default);
-    Task DeleteSubscriptionRuleAsync(string connectionString, string topicName, string subscriptionName, string ruleName, CancellationToken ct = default);
+        CancellationToken cancellationToken = default);
+    Task DeleteSubscriptionRuleAsync(string connectionString, string topicName, string subscriptionName, string ruleName, CancellationToken cancellationToken = default);
 }

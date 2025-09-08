@@ -4,8 +4,8 @@ namespace Vibes.ASBManager.Application.Interfaces.Connection;
 
 public interface IConnectionStore
 {
-    Task<IReadOnlyList<ConnectionInfo>> GetAllAsync(CancellationToken ct = default);
-    Task<ConnectionInfo?> GetAsync(string id, CancellationToken ct = default);
-    Task SaveAsync(ConnectionInfo connection, CancellationToken ct = default);
-    Task DeleteAsync(string id, CancellationToken ct = default);
+    Task<IReadOnlyList<ConnectionInfo>> GetAllAsync(CancellationToken cancellationToken = default);
+    Task<ConnectionInfo?> GetAsync(string id, CancellationToken cancellationToken = default);
+    Task SaveAsync(ConnectionInfo connection, CancellationToken cancellationToken = default);
+    Task DeleteAsync(string id, CancellationToken cancellationToken = default);
 }

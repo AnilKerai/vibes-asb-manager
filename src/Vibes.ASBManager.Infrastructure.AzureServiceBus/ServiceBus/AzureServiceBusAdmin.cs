@@ -22,7 +22,7 @@ public sealed class AzureServiceBusAdmin(
         bool deadLetterOnMessageExpiration,
         string? forwardTo,
         string? forwardDeadLetteredMessagesTo,
-        CancellationToken ct = default)
+        CancellationToken cancellationToken = default)
     {
         var client = new ServiceBusAdministrationClient(connectionString);
         var options = new CreateQueueOptions(queueName)
@@ -39,107 +39,107 @@ public sealed class AzureServiceBusAdmin(
         {
             options.DefaultMessageTimeToLive = defaultMessageTimeToLive.Value;
         }
-        await client.CreateQueueAsync(options, ct).ConfigureAwait(false);
+        await client.CreateQueueAsync(options, cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task DeleteQueueAsync(string connectionString, string queueName, CancellationToken ct = default)
+    public async Task DeleteQueueAsync(string connectionString, string queueName, CancellationToken cancellationToken = default)
     {
         var client = new ServiceBusAdministrationClient(connectionString);
-        await client.DeleteQueueAsync(queueName, ct).ConfigureAwait(false);
+        await client.DeleteQueueAsync(queueName, cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task CreateTopicAsync(string connectionString, string topicName, CancellationToken ct = default)
+    public async Task CreateTopicAsync(string connectionString, string topicName, CancellationToken cancellationToken = default)
     {
         var client = new ServiceBusAdministrationClient(connectionString);
         var options = new CreateTopicOptions(topicName);
-        await client.CreateTopicAsync(options, ct).ConfigureAwait(false);
+        await client.CreateTopicAsync(options, cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task DeleteTopicAsync(string connectionString, string topicName, CancellationToken ct = default)
+    public async Task DeleteTopicAsync(string connectionString, string topicName, CancellationToken cancellationToken = default)
     {
         var client = new ServiceBusAdministrationClient(connectionString);
-        await client.DeleteTopicAsync(topicName, ct).ConfigureAwait(false);
+        await client.DeleteTopicAsync(topicName, cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task<IReadOnlyList<TopicSummary>> ListTopicsAsync(string connectionString, CancellationToken ct = default)
+    public async Task<IReadOnlyList<TopicSummary>> ListTopicsAsync(string connectionString, CancellationToken cancellationToken = default)
     {
         var client = new ServiceBusAdministrationClient(connectionString);
-        var result = new List<TopicSummary>();
-        await foreach (var tp in client.GetTopicsAsync(ct))
+        var topicSummaries = new List<TopicSummary>();
+        await foreach (var topic in client.GetTopicsAsync(cancellationToken))
         {
-            var subCount = 0;
-            await foreach (var _ in client.GetSubscriptionsAsync(tp.Name, ct))
+            var subscriptionCount = 0;
+            await foreach (var _ in client.GetSubscriptionsAsync(topic.Name, cancellationToken))
             {
-                subCount++;
+                subscriptionCount++;
             }
-            long scheduled = 0;
+            long scheduledMessageCount = 0;
             try
             {
-                var runtime = await client.GetTopicRuntimePropertiesAsync(tp.Name, ct).ConfigureAwait(false);
-                scheduled = (long)runtime.Value.ScheduledMessageCount;
+                var topicRuntimeResponse = await client.GetTopicRuntimePropertiesAsync(topic.Name, cancellationToken).ConfigureAwait(false);
+                scheduledMessageCount = (long)topicRuntimeResponse.Value.ScheduledMessageCount;
             }
             catch (RequestFailedException)
             {
             }
-            result.Add(new TopicSummary { Name = tp.Name, SubscriptionCount = subCount, ScheduledMessageCount = scheduled });
+            topicSummaries.Add(new TopicSummary { Name = topic.Name, SubscriptionCount = subscriptionCount, ScheduledMessageCount = scheduledMessageCount });
         }
-        return result.OrderBy(t => t.Name).ToList();
+        return topicSummaries.OrderBy(topic => topic.Name).ToList();
     }
 
-    public async Task<IReadOnlyList<QueueSummary>> ListQueuesAsync(string connectionString, CancellationToken ct = default)
+    public async Task<IReadOnlyList<QueueSummary>> ListQueuesAsync(string connectionString, CancellationToken cancellationToken = default)
     {
         var client = new ServiceBusAdministrationClient(connectionString);
-        var result = new List<QueueSummary>();
-        await foreach (var qrp in client.GetQueuesRuntimePropertiesAsync(ct))
+        var queueSummaries = new List<QueueSummary>();
+        await foreach (var queueRuntimeProperties in client.GetQueuesRuntimePropertiesAsync(cancellationToken))
         {
-            result.Add(new QueueSummary
+            queueSummaries.Add(new QueueSummary
             {
-                Name = qrp.Name,
-                ActiveMessageCount = (long)qrp.ActiveMessageCount,
-                DeadLetterMessageCount = (long)qrp.DeadLetterMessageCount
+                Name = queueRuntimeProperties.Name,
+                ActiveMessageCount = (long)queueRuntimeProperties.ActiveMessageCount,
+                DeadLetterMessageCount = (long)queueRuntimeProperties.DeadLetterMessageCount
             });
         }
-        return result.OrderBy(q => q.Name).ToList();
+        return queueSummaries.OrderBy(queue => queue.Name).ToList();
     }
 
-    public async Task<IReadOnlyList<SubscriptionSummary>> ListSubscriptionsAsync(string connectionString, string topicName, CancellationToken ct = default)
+    public async Task<IReadOnlyList<SubscriptionSummary>> ListSubscriptionsAsync(string connectionString, string topicName, CancellationToken cancellationToken = default)
     {
         var client = new ServiceBusAdministrationClient(connectionString);
-        var result = new List<SubscriptionSummary>();
-        await foreach (var srp in client.GetSubscriptionsRuntimePropertiesAsync(topicName, ct))
+        var subscriptionSummaries = new List<SubscriptionSummary>();
+        await foreach (var subscriptionRuntimeProperties in client.GetSubscriptionsRuntimePropertiesAsync(topicName, cancellationToken))
         {
-            result.Add(new SubscriptionSummary
+            subscriptionSummaries.Add(new SubscriptionSummary
             {
                 TopicName = topicName,
-                SubscriptionName = srp.SubscriptionName,
-                ActiveMessageCount = (long)srp.ActiveMessageCount,
-                DeadLetterMessageCount = (long)srp.DeadLetterMessageCount
+                SubscriptionName = subscriptionRuntimeProperties.SubscriptionName,
+                ActiveMessageCount = (long)subscriptionRuntimeProperties.ActiveMessageCount,
+                DeadLetterMessageCount = (long)subscriptionRuntimeProperties.DeadLetterMessageCount
             });
         }
-        return result.OrderBy(s => s.SubscriptionName).ToList();
+        return subscriptionSummaries.OrderBy(subscription => subscription.SubscriptionName).ToList();
     }
 
-    public async Task<QueueSettings> GetQueueSettingsAsync(string connectionString, string queueName, CancellationToken ct = default)
+    public async Task<QueueSettings> GetQueueSettingsAsync(string connectionString, string queueName, CancellationToken cancellationToken = default)
     {
         var client = new ServiceBusAdministrationClient(connectionString);
-        var resp = await client.GetQueueAsync(queueName, ct).ConfigureAwait(false);
-        var p = resp.Value;
+        var queueResponse = await client.GetQueueAsync(queueName, cancellationToken).ConfigureAwait(false);
+        var queueProperties = queueResponse.Value;
         return new QueueSettings
         {
-            Name = p.Name,
-            DefaultMessageTimeToLive = p.DefaultMessageTimeToLive,
-            DeadLetteringOnMessageExpiration = p.DeadLetteringOnMessageExpiration
+            Name = queueProperties.Name,
+            DefaultMessageTimeToLive = queueProperties.DefaultMessageTimeToLive,
+            DeadLetteringOnMessageExpiration = queueProperties.DeadLetteringOnMessageExpiration
         };
     }
 
-    public async Task UpdateQueueSettingsAsync(string connectionString, string queueName, TimeSpan defaultMessageTimeToLive, bool deadLetteringOnMessageExpiration, CancellationToken ct = default)
+    public async Task UpdateQueueSettingsAsync(string connectionString, string queueName, TimeSpan defaultMessageTimeToLive, bool deadLetteringOnMessageExpiration, CancellationToken cancellationToken = default)
     {
         var client = new ServiceBusAdministrationClient(connectionString);
-        var resp = await client.GetQueueAsync(queueName, ct).ConfigureAwait(false);
-        var props = resp.Value;
-        props.DefaultMessageTimeToLive = defaultMessageTimeToLive;
-        props.DeadLetteringOnMessageExpiration = deadLetteringOnMessageExpiration;
-        await client.UpdateQueueAsync(props, ct).ConfigureAwait(false);
+        var queueResponse = await client.GetQueueAsync(queueName, cancellationToken).ConfigureAwait(false);
+        var queueProperties = queueResponse.Value;
+        queueProperties.DefaultMessageTimeToLive = defaultMessageTimeToLive;
+        queueProperties.DeadLetteringOnMessageExpiration = deadLetteringOnMessageExpiration;
+        await client.UpdateQueueAsync(queueProperties, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task UpdateQueuePropertiesAsync(
@@ -150,88 +150,88 @@ public sealed class AzureServiceBusAdmin(
         bool enableBatchedOperations,
         string? forwardTo,
         string? forwardDeadLetteredMessagesTo,
-        CancellationToken ct = default)
+        CancellationToken cancellationToken = default)
     {
         var client = new ServiceBusAdministrationClient(connectionString);
-        var resp = await client.GetQueueAsync(queueName, ct).ConfigureAwait(false);
-        var props = resp.Value;
-        props.LockDuration = lockDuration;
-        props.MaxDeliveryCount = maxDeliveryCount;
-        props.EnableBatchedOperations = enableBatchedOperations;
-        props.ForwardTo = string.IsNullOrWhiteSpace(forwardTo) ? null : forwardTo;
-        props.ForwardDeadLetteredMessagesTo = string.IsNullOrWhiteSpace(forwardDeadLetteredMessagesTo) ? null : forwardDeadLetteredMessagesTo;
-        await client.UpdateQueueAsync(props, ct).ConfigureAwait(false);
+        var queueResponse = await client.GetQueueAsync(queueName, cancellationToken).ConfigureAwait(false);
+        var queueProperties = queueResponse.Value;
+        queueProperties.LockDuration = lockDuration;
+        queueProperties.MaxDeliveryCount = maxDeliveryCount;
+        queueProperties.EnableBatchedOperations = enableBatchedOperations;
+        queueProperties.ForwardTo = string.IsNullOrWhiteSpace(forwardTo) ? null : forwardTo;
+        queueProperties.ForwardDeadLetteredMessagesTo = string.IsNullOrWhiteSpace(forwardDeadLetteredMessagesTo) ? null : forwardDeadLetteredMessagesTo;
+        await client.UpdateQueueAsync(queueProperties, cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task<TopicSettings> GetTopicSettingsAsync(string connectionString, string topicName, CancellationToken ct = default)
+    public async Task<TopicSettings> GetTopicSettingsAsync(string connectionString, string topicName, CancellationToken cancellationToken = default)
     {
         var client = new ServiceBusAdministrationClient(connectionString);
-        var resp = await client.GetTopicAsync(topicName, ct).ConfigureAwait(false);
-        var p = resp.Value;
+        var topicResponse = await client.GetTopicAsync(topicName, cancellationToken).ConfigureAwait(false);
+        var topicProperties = topicResponse.Value;
         return new TopicSettings
         {
-            Name = p.Name,
-            DefaultMessageTimeToLive = p.DefaultMessageTimeToLive
+            Name = topicProperties.Name,
+            DefaultMessageTimeToLive = topicProperties.DefaultMessageTimeToLive
         };
     }
 
-    public async Task UpdateTopicSettingsAsync(string connectionString, string topicName, TimeSpan defaultMessageTimeToLive, CancellationToken ct = default)
+    public async Task UpdateTopicSettingsAsync(string connectionString, string topicName, TimeSpan defaultMessageTimeToLive, CancellationToken cancellationToken = default)
     {
         var client = new ServiceBusAdministrationClient(connectionString);
-        var resp = await client.GetTopicAsync(topicName, ct).ConfigureAwait(false);
-        var props = resp.Value;
-        props.DefaultMessageTimeToLive = defaultMessageTimeToLive;
-        await client.UpdateTopicAsync(props, ct).ConfigureAwait(false);
+        var topicResponse = await client.GetTopicAsync(topicName, cancellationToken).ConfigureAwait(false);
+        var topicProperties = topicResponse.Value;
+        topicProperties.DefaultMessageTimeToLive = defaultMessageTimeToLive;
+        await client.UpdateTopicAsync(topicProperties, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task UpdateTopicPropertiesAsync(
         string connectionString,
         string topicName,
         bool enableBatchedOperations,
-        CancellationToken ct = default)
+        CancellationToken cancellationToken = default)
     {
         var client = new ServiceBusAdministrationClient(connectionString);
-        var resp = await client.GetTopicAsync(topicName, ct).ConfigureAwait(false);
-        var props = resp.Value;
-        props.EnableBatchedOperations = enableBatchedOperations;
-        await client.UpdateTopicAsync(props, ct).ConfigureAwait(false);
+        var topicResponse = await client.GetTopicAsync(topicName, cancellationToken).ConfigureAwait(false);
+        var topicProperties = topicResponse.Value;
+        topicProperties.EnableBatchedOperations = enableBatchedOperations;
+        await client.UpdateTopicAsync(topicProperties, cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task CreateSubscriptionAsync(string connectionString, string topicName, string subscriptionName, CancellationToken ct = default)
+    public async Task CreateSubscriptionAsync(string connectionString, string topicName, string subscriptionName, CancellationToken cancellationToken = default)
     {
         var client = new ServiceBusAdministrationClient(connectionString);
         var options = new CreateSubscriptionOptions(topicName, subscriptionName);
-        await client.CreateSubscriptionAsync(options, ct).ConfigureAwait(false);
+        await client.CreateSubscriptionAsync(options, cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task DeleteSubscriptionAsync(string connectionString, string topicName, string subscriptionName, CancellationToken ct = default)
+    public async Task DeleteSubscriptionAsync(string connectionString, string topicName, string subscriptionName, CancellationToken cancellationToken = default)
     {
         var client = new ServiceBusAdministrationClient(connectionString);
-        await client.DeleteSubscriptionAsync(topicName, subscriptionName, ct).ConfigureAwait(false);
+        await client.DeleteSubscriptionAsync(topicName, subscriptionName, cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task<SubscriptionSettings> GetSubscriptionSettingsAsync(string connectionString, string topicName, string subscriptionName, CancellationToken ct = default)
+    public async Task<SubscriptionSettings> GetSubscriptionSettingsAsync(string connectionString, string topicName, string subscriptionName, CancellationToken cancellationToken = default)
     {
         var client = new ServiceBusAdministrationClient(connectionString);
-        var resp = await client.GetSubscriptionAsync(topicName, subscriptionName, ct).ConfigureAwait(false);
-        var p = resp.Value;
+        var subscriptionResponse = await client.GetSubscriptionAsync(topicName, subscriptionName, cancellationToken).ConfigureAwait(false);
+        var subscriptionProperties = subscriptionResponse.Value;
         return new SubscriptionSettings
         {
             TopicName = topicName,
             SubscriptionName = subscriptionName,
-            DefaultMessageTimeToLive = p.DefaultMessageTimeToLive,
-            DeadLetteringOnMessageExpiration = p.DeadLetteringOnMessageExpiration
+            DefaultMessageTimeToLive = subscriptionProperties.DefaultMessageTimeToLive,
+            DeadLetteringOnMessageExpiration = subscriptionProperties.DeadLetteringOnMessageExpiration
         };
     }
 
-    public async Task UpdateSubscriptionSettingsAsync(string connectionString, string topicName, string subscriptionName, TimeSpan defaultMessageTimeToLive, bool deadLetteringOnMessageExpiration, CancellationToken ct = default)
+    public async Task UpdateSubscriptionSettingsAsync(string connectionString, string topicName, string subscriptionName, TimeSpan defaultMessageTimeToLive, bool deadLetteringOnMessageExpiration, CancellationToken cancellationToken = default)
     {
         var client = new ServiceBusAdministrationClient(connectionString);
-        var resp = await client.GetSubscriptionAsync(topicName, subscriptionName, ct).ConfigureAwait(false);
-        var props = resp.Value;
-        props.DefaultMessageTimeToLive = defaultMessageTimeToLive;
-        props.DeadLetteringOnMessageExpiration = deadLetteringOnMessageExpiration;
-        await client.UpdateSubscriptionAsync(props, ct).ConfigureAwait(false);
+        var subscriptionResponse = await client.GetSubscriptionAsync(topicName, subscriptionName, cancellationToken).ConfigureAwait(false);
+        var subscriptionProperties = subscriptionResponse.Value;
+        subscriptionProperties.DefaultMessageTimeToLive = defaultMessageTimeToLive;
+        subscriptionProperties.DeadLetteringOnMessageExpiration = deadLetteringOnMessageExpiration;
+        await client.UpdateSubscriptionAsync(subscriptionProperties, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task UpdateSubscriptionPropertiesAsync(
@@ -244,37 +244,37 @@ public sealed class AzureServiceBusAdmin(
         bool enableBatchedOperations,
         string? forwardTo,
         string? forwardDeadLetteredMessagesTo,
-        CancellationToken ct = default)
+        CancellationToken cancellationToken = default)
     {
         var client = new ServiceBusAdministrationClient(connectionString);
-        var resp = await client.GetSubscriptionAsync(topicName, subscriptionName, ct).ConfigureAwait(false);
-        var props = resp.Value;
-        props.RequiresSession = requiresSession;
-        props.LockDuration = lockDuration;
-        props.MaxDeliveryCount = maxDeliveryCount;
-        props.EnableBatchedOperations = enableBatchedOperations;
-        props.ForwardTo = string.IsNullOrWhiteSpace(forwardTo) ? null : forwardTo;
-        props.ForwardDeadLetteredMessagesTo = string.IsNullOrWhiteSpace(forwardDeadLetteredMessagesTo) ? null : forwardDeadLetteredMessagesTo;
-        await client.UpdateSubscriptionAsync(props, ct).ConfigureAwait(false);
+        var subscriptionResponse = await client.GetSubscriptionAsync(topicName, subscriptionName, cancellationToken).ConfigureAwait(false);
+        var subscriptionProperties = subscriptionResponse.Value;
+        subscriptionProperties.RequiresSession = requiresSession;
+        subscriptionProperties.LockDuration = lockDuration;
+        subscriptionProperties.MaxDeliveryCount = maxDeliveryCount;
+        subscriptionProperties.EnableBatchedOperations = enableBatchedOperations;
+        subscriptionProperties.ForwardTo = string.IsNullOrWhiteSpace(forwardTo) ? null : forwardTo;
+        subscriptionProperties.ForwardDeadLetteredMessagesTo = string.IsNullOrWhiteSpace(forwardDeadLetteredMessagesTo) ? null : forwardDeadLetteredMessagesTo;
+        await client.UpdateSubscriptionAsync(subscriptionProperties, cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task<IReadOnlyList<SubscriptionRuleInfo>> ListSubscriptionRulesAsync(string connectionString, string topicName, string subscriptionName, CancellationToken ct = default)
+    public async Task<IReadOnlyList<SubscriptionRuleInfo>> ListSubscriptionRulesAsync(string connectionString, string topicName, string subscriptionName, CancellationToken cancellationToken = default)
     {
         var client = new ServiceBusAdministrationClient(connectionString);
-        var result = new List<SubscriptionRuleInfo>();
-        await foreach (var rule in client.GetRulesAsync(topicName, subscriptionName, ct))
+        var subscriptionRules = new List<SubscriptionRuleInfo>();
+        await foreach (var rule in client.GetRulesAsync(topicName, subscriptionName, cancellationToken))
         {
-            result.Add(new SubscriptionRuleInfo
+            subscriptionRules.Add(new SubscriptionRuleInfo
             {
                 Name = rule.Name,
                 Filter = ruleFormatter.FormatFilter(rule.Filter),
                 Action = ruleFormatter.FormatAction(rule.Action)
             });
         }
-        return result.OrderBy(r => r.Name).ToList();
+        return subscriptionRules.OrderBy(rule => rule.Name).ToList();
     }
 
-    public async Task CreateSubscriptionSqlRuleAsync(string connectionString, string topicName, string subscriptionName, string ruleName, string sqlExpression, string? sqlAction = null, CancellationToken ct = default)
+    public async Task CreateSubscriptionSqlRuleAsync(string connectionString, string topicName, string subscriptionName, string ruleName, string sqlExpression, string? sqlAction = null, CancellationToken cancellationToken = default)
     {
         var client = new ServiceBusAdministrationClient(connectionString);
         var options = new CreateRuleOptions(ruleName, new SqlRuleFilter(sqlExpression));
@@ -282,7 +282,7 @@ public sealed class AzureServiceBusAdmin(
         {
             options.Action = new SqlRuleAction(sqlAction);
         }
-        await client.CreateRuleAsync(topicName, subscriptionName, options, ct).ConfigureAwait(false);
+        await client.CreateRuleAsync(topicName, subscriptionName, options, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task CreateSubscriptionCorrelationRuleAsync(
@@ -298,7 +298,7 @@ public sealed class AzureServiceBusAdmin(
         string? sessionId,
         string? contentType,
         Dictionary<string, string>? applicationProperties = null,
-        CancellationToken ct = default)
+        CancellationToken cancellationToken = default)
     {
         var client = new ServiceBusAdministrationClient(connectionString);
         var filter = new CorrelationRuleFilter
@@ -313,19 +313,19 @@ public sealed class AzureServiceBusAdmin(
         };
         if (applicationProperties is not null)
         {
-            foreach (var kv in applicationProperties)
+            foreach (var applicationProperty in applicationProperties)
             {
-                filter.ApplicationProperties[kv.Key] = kv.Value;
+                filter.ApplicationProperties[applicationProperty.Key] = applicationProperty.Value;
             }
         }
         var options = new CreateRuleOptions(ruleName, filter);
-        await client.CreateRuleAsync(topicName, subscriptionName, options, ct).ConfigureAwait(false);
+        await client.CreateRuleAsync(topicName, subscriptionName, options, cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task DeleteSubscriptionRuleAsync(string connectionString, string topicName, string subscriptionName, string ruleName, CancellationToken ct = default)
+    public async Task DeleteSubscriptionRuleAsync(string connectionString, string topicName, string subscriptionName, string ruleName, CancellationToken cancellationToken = default)
     {
         var client = new ServiceBusAdministrationClient(connectionString);
-        await client.DeleteRuleAsync(topicName, subscriptionName, ruleName, ct).ConfigureAwait(false);
+        await client.DeleteRuleAsync(topicName, subscriptionName, ruleName, cancellationToken).ConfigureAwait(false);
     }
 
     

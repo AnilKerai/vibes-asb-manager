@@ -14,29 +14,29 @@ public sealed class RuleFormatter : IRuleFormatter
     {
         switch (filter)
         {
-            case SqlRuleFilter sql:
+            case SqlRuleFilter sqlFilter:
             {
-                var expr = sql.SqlExpression?.Trim();
-                if (string.Equals(expr, "1=1", StringComparison.OrdinalIgnoreCase)) return "True";
-                if (string.Equals(expr, "1=0", StringComparison.OrdinalIgnoreCase)) return "False";
-                return $"SQL: {sql.SqlExpression}";
+                var sqlExpression = sqlFilter.SqlExpression?.Trim();
+                if (string.Equals(sqlExpression, "1=1", StringComparison.OrdinalIgnoreCase)) return "True";
+                if (string.Equals(sqlExpression, "1=0", StringComparison.OrdinalIgnoreCase)) return "False";
+                return $"SQL: {sqlFilter.SqlExpression}";
             }
-            case CorrelationRuleFilter corr:
+            case CorrelationRuleFilter correlationFilter:
             {
-                var parts = new List<string>();
-                if (!string.IsNullOrWhiteSpace(corr.CorrelationId)) parts.Add($"CorrelationId='{corr.CorrelationId}'");
-                if (!string.IsNullOrWhiteSpace(corr.Subject)) parts.Add($"Subject='{corr.Subject}'");
-                if (!string.IsNullOrWhiteSpace(corr.To)) parts.Add($"To='{corr.To}'");
-                if (!string.IsNullOrWhiteSpace(corr.ReplyTo)) parts.Add($"ReplyTo='{corr.ReplyTo}'");
-                if (!string.IsNullOrWhiteSpace(corr.ReplyToSessionId)) parts.Add($"ReplyToSessionId='{corr.ReplyToSessionId}'");
-                if (!string.IsNullOrWhiteSpace(corr.SessionId)) parts.Add($"SessionId='{corr.SessionId}'");
-                if (!string.IsNullOrWhiteSpace(corr.ContentType)) parts.Add($"ContentType='{corr.ContentType}'");
-                if (corr.ApplicationProperties is { Count: > 0 })
+                var filterParts = new List<string>();
+                if (!string.IsNullOrWhiteSpace(correlationFilter.CorrelationId)) filterParts.Add($"CorrelationId='{correlationFilter.CorrelationId}'");
+                if (!string.IsNullOrWhiteSpace(correlationFilter.Subject)) filterParts.Add($"Subject='{correlationFilter.Subject}'");
+                if (!string.IsNullOrWhiteSpace(correlationFilter.To)) filterParts.Add($"To='{correlationFilter.To}'");
+                if (!string.IsNullOrWhiteSpace(correlationFilter.ReplyTo)) filterParts.Add($"ReplyTo='{correlationFilter.ReplyTo}'");
+                if (!string.IsNullOrWhiteSpace(correlationFilter.ReplyToSessionId)) filterParts.Add($"ReplyToSessionId='{correlationFilter.ReplyToSessionId}'");
+                if (!string.IsNullOrWhiteSpace(correlationFilter.SessionId)) filterParts.Add($"SessionId='{correlationFilter.SessionId}'");
+                if (!string.IsNullOrWhiteSpace(correlationFilter.ContentType)) filterParts.Add($"ContentType='{correlationFilter.ContentType}'");
+                if (correlationFilter.ApplicationProperties is { Count: > 0 })
                 {
-                    var props = string.Join(", ", corr.ApplicationProperties.Select(kv => $"{kv.Key}={kv.Value}"));
-                    parts.Add($"AppProps: {props}");
+                    var props = string.Join(", ", correlationFilter.ApplicationProperties.Select(property => $"{property.Key}={property.Value}"));
+                    filterParts.Add($"AppProps: {props}");
                 }
-                return parts.Count == 0 ? "Correlation (no fields)" : $"Correlation: {string.Join(", ", parts)}";
+                return filterParts.Count == 0 ? "Correlation (no fields)" : $"Correlation: {string.Join(", ", filterParts)}";
             }
             default:
                 return filter.GetType().Name;
@@ -48,7 +48,7 @@ public sealed class RuleFormatter : IRuleFormatter
         if (action is null) return null;
         return action switch
         {
-            SqlRuleAction sql => $"SQL: {sql.SqlExpression}",
+            SqlRuleAction sqlAction => $"SQL: {sqlAction.SqlExpression}",
             _ => action.GetType().Name
         };
     }

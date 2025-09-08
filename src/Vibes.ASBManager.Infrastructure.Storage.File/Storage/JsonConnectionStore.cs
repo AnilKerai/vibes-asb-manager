@@ -17,57 +17,57 @@ public sealed class JsonConnectionStore(
     private readonly string _filePath = string.IsNullOrWhiteSpace(storeOptions.CurrentValue.FilePath)
         ? throw new ArgumentException("JsonFileStorageOptions.FilePath must be provided", nameof(storeOptions))
         : storeOptions.CurrentValue.FilePath;
-    private readonly IFileSystem _fs = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
-    private readonly SemaphoreSlim _gate = new(1, 1);
-    private static readonly JsonSerializerOptions Options = new()
+    private readonly IFileSystem _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
+    private readonly SemaphoreSlim _semaphore = new(1, 1);
+    private static readonly JsonSerializerOptions SerializerOptions = new()
     {
         WriteIndented = true,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
 
-    public async Task<IReadOnlyList<ConnectionInfo>> GetAllAsync(CancellationToken ct = default)
+    public async Task<IReadOnlyList<ConnectionInfo>> GetAllAsync(CancellationToken cancellationToken = default)
     {
-        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        await _semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var list = await ReadAsync(ct).ConfigureAwait(false);
-            return list
+            var connections = await ReadAsync(cancellationToken).ConfigureAwait(false);
+            return connections
                 .OrderByDescending(c => c.Pinned)
                 .ThenBy(c => c.Name, StringComparer.OrdinalIgnoreCase)
                 .ToList();
         }
         finally
         {
-            _gate.Release();
+            _semaphore.Release();
         }
     }
 
-    public async Task<ConnectionInfo?> GetAsync(string id, CancellationToken ct = default)
+    public async Task<ConnectionInfo?> GetAsync(string id, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(id)) return null;
-        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        await _semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var list = await ReadAsync(ct).ConfigureAwait(false);
-            return list.FirstOrDefault(c => string.Equals(c.Id, id, StringComparison.OrdinalIgnoreCase));
+            var connections = await ReadAsync(cancellationToken).ConfigureAwait(false);
+            return connections.FirstOrDefault(c => string.Equals(c.Id, id, StringComparison.OrdinalIgnoreCase));
         }
         finally
         {
-            _gate.Release();
+            _semaphore.Release();
         }
     }
 
-    public async Task SaveAsync(ConnectionInfo connection, CancellationToken ct = default)
+    public async Task SaveAsync(ConnectionInfo connection, CancellationToken cancellationToken = default)
     {
         if (connection is null) return;
-        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        await _semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var list = await ReadAsync(ct).ConfigureAwait(false);
-            var existing = list.FindIndex(c => string.Equals(c.Id, connection.Id, StringComparison.OrdinalIgnoreCase));
-            if (existing >= 0)
+            var connections = await ReadAsync(cancellationToken).ConfigureAwait(false);
+            var existingIndex = connections.FindIndex(c => string.Equals(c.Id, connection.Id, StringComparison.OrdinalIgnoreCase));
+            if (existingIndex >= 0)
             {
-                list[existing] = connection;
+                connections[existingIndex] = connection;
             }
             else
             {
@@ -75,43 +75,43 @@ public sealed class JsonConnectionStore(
                     connection.Id = Guid.NewGuid().ToString("n");
                 if (connection.CreatedUtc == default)
                     connection.CreatedUtc = DateTimeOffset.UtcNow;
-                list.Add(connection);
+                connections.Add(connection);
             }
-            await WriteAsync(list, ct).ConfigureAwait(false);
+            await WriteAsync(connections, cancellationToken).ConfigureAwait(false);
         }
         finally
         {
-            _gate.Release();
+            _semaphore.Release();
         }
     }
 
-    public async Task DeleteAsync(string id, CancellationToken ct = default)
+    public async Task DeleteAsync(string id, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(id)) return;
-        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        await _semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var list = await ReadAsync(ct).ConfigureAwait(false);
-            list.RemoveAll(c => string.Equals(c.Id, id, StringComparison.OrdinalIgnoreCase));
-            await WriteAsync(list, ct).ConfigureAwait(false);
+            var connections = await ReadAsync(cancellationToken).ConfigureAwait(false);
+            connections.RemoveAll(c => string.Equals(c.Id, id, StringComparison.OrdinalIgnoreCase));
+            await WriteAsync(connections, cancellationToken).ConfigureAwait(false);
         }
         finally
         {
-            _gate.Release();
+            _semaphore.Release();
         }
     }
 
     private async Task<List<ConnectionInfo>> ReadAsync(CancellationToken ct)
     {
-        EnsureDirectory();
-        if (!_fs.Exists(_filePath))
+        EnsureDirectoryExists();
+        if (!_fileSystem.Exists(_filePath))
         {
             return new List<ConnectionInfo>();
         }
-        await using var fs = _fs.OpenRead(_filePath);
+        await using var readStream = _fileSystem.OpenRead(_filePath);
         try
         {
-            var data = await JsonSerializer.DeserializeAsync<List<ConnectionInfo>>(fs, Options, ct).ConfigureAwait(false);
+            var data = await JsonSerializer.DeserializeAsync<List<ConnectionInfo>>(readStream, SerializerOptions, ct).ConfigureAwait(false);
             return data ?? new List<ConnectionInfo>();
         }
         catch
@@ -120,31 +120,31 @@ public sealed class JsonConnectionStore(
         }
     }
 
-    private async Task WriteAsync(List<ConnectionInfo> list, CancellationToken ct)
+    private async Task WriteAsync(List<ConnectionInfo> connections, CancellationToken ct)
     {
-        EnsureDirectory();
+        EnsureDirectoryExists();
         // Write to temp then move to avoid partial writes
-        var tmp = _filePath + ".tmp";
-        await using (var fs = _fs.CreateWrite(tmp))
+        var tempFilePath = _filePath + ".tmp";
+        await using (var writeStream = _fileSystem.CreateWrite(tempFilePath))
         {
-            await JsonSerializer.SerializeAsync(fs, list, Options, ct).ConfigureAwait(false);
+            await JsonSerializer.SerializeAsync(writeStream, connections, SerializerOptions, ct).ConfigureAwait(false);
         }
-        if (_fs.Exists(_filePath))
+        if (_fileSystem.Exists(_filePath))
         {
-            _fs.Replace(tmp, _filePath);
+            _fileSystem.Replace(tempFilePath, _filePath);
         }
         else
         {
-            _fs.Move(tmp, _filePath);
+            _fileSystem.Move(tempFilePath, _filePath);
         }
     }
 
-    private void EnsureDirectory()
+    private void EnsureDirectoryExists()
     {
-        var dir = Path.GetDirectoryName(_filePath);
-        if (!string.IsNullOrWhiteSpace(dir) && !Directory.Exists(dir))
+        var directoryPath = Path.GetDirectoryName(_filePath);
+        if (!string.IsNullOrWhiteSpace(directoryPath) && !Directory.Exists(directoryPath))
         {
-            Directory.CreateDirectory(dir);
+            Directory.CreateDirectory(directoryPath);
         }
     }
 }
