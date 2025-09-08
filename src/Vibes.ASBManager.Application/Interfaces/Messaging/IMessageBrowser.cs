@@ -1,6 +1,6 @@
 using Vibes.ASBManager.Application.Models;
 
-namespace Vibes.ASBManager.Application.Interfaces;
+namespace Vibes.ASBManager.Application.Interfaces.Messaging;
 
 public interface IMessageBrowser
 {

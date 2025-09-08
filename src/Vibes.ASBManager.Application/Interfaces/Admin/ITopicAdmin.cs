@@ -1,6 +1,6 @@
 using Vibes.ASBManager.Application.Models;
 
-namespace Vibes.ASBManager.Application.Interfaces;
+namespace Vibes.ASBManager.Application.Interfaces.Admin;
 
 public interface ITopicAdmin
 {

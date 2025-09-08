@@ -1,6 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using Azure.Messaging.ServiceBus;
 using Vibes.ASBManager.Application.Interfaces;
+using Vibes.ASBManager.Application.Interfaces.Messaging;
 using Vibes.ASBManager.Application.Models;
 
 namespace Vibes.ASBManager.Infrastructure.AzureServiceBus.ServiceBus;
