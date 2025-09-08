@@ -129,7 +129,12 @@ public sealed class AzureServiceBusAdmin(
         {
             Name = queueProperties.Name,
             DefaultMessageTimeToLive = queueProperties.DefaultMessageTimeToLive,
-            DeadLetteringOnMessageExpiration = queueProperties.DeadLetteringOnMessageExpiration
+            DeadLetteringOnMessageExpiration = queueProperties.DeadLetteringOnMessageExpiration,
+            LockDuration = queueProperties.LockDuration,
+            MaxDeliveryCount = queueProperties.MaxDeliveryCount,
+            EnableBatchedOperations = queueProperties.EnableBatchedOperations,
+            ForwardTo = queueProperties.ForwardTo,
+            ForwardDeadLetteredMessagesTo = queueProperties.ForwardDeadLetteredMessagesTo
         };
     }
 
@@ -172,7 +177,8 @@ public sealed class AzureServiceBusAdmin(
         return new TopicSettings
         {
             Name = topicProperties.Name,
-            DefaultMessageTimeToLive = topicProperties.DefaultMessageTimeToLive
+            DefaultMessageTimeToLive = topicProperties.DefaultMessageTimeToLive,
+            EnableBatchedOperations = topicProperties.EnableBatchedOperations
         };
     }
 
@@ -221,7 +227,13 @@ public sealed class AzureServiceBusAdmin(
             TopicName = topicName,
             SubscriptionName = subscriptionName,
             DefaultMessageTimeToLive = subscriptionProperties.DefaultMessageTimeToLive,
-            DeadLetteringOnMessageExpiration = subscriptionProperties.DeadLetteringOnMessageExpiration
+            DeadLetteringOnMessageExpiration = subscriptionProperties.DeadLetteringOnMessageExpiration,
+            RequiresSession = subscriptionProperties.RequiresSession,
+            LockDuration = subscriptionProperties.LockDuration,
+            MaxDeliveryCount = subscriptionProperties.MaxDeliveryCount,
+            EnableBatchedOperations = subscriptionProperties.EnableBatchedOperations,
+            ForwardTo = subscriptionProperties.ForwardTo,
+            ForwardDeadLetteredMessagesTo = subscriptionProperties.ForwardDeadLetteredMessagesTo
         };
     }
 
