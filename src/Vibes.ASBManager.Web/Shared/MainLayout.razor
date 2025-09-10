@@ -26,22 +26,23 @@
                Variant="DrawerVariant.Responsive"
                Open="@_drawerOpen"
                Anchor="Anchor.Left"
-               ClipMode="DrawerClipMode.Never">
-        <MudDrawerHeader>
-            <MudStack Row="false" AlignItems="AlignItems.Center" Justify="Justify.FlexStart" Class="w-100">
+               ClipMode="DrawerClipMode.Never"
+               Class="app-drawer">
+        <MudDrawerHeader Style="flex:0 0 auto;">
+            <MudStack Row="false" AlignItems="AlignItems.Center" Justify="Justify.FlexStart" Class="w-100 drawer-header-stack">
                 <MudImage
                     Src="logo.png"
                     Alt="Logo"
-                    Class="rounded-lg ma-10"
+                    Class="drawer-logo rounded-lg ma-10"
                     Width="150"
                     Height="150"
                     ObjectFit="ObjectFit.Cover"
                     ObjectPosition="ObjectPosition.Center"
                 />
-                <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenAddDialog">Add Connection</MudButton>
+                <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenAddDialog" Class="drawer-add-btn">Add Connection</MudButton>
             </MudStack>
         </MudDrawerHeader>
-        <MudNavMenu Dense="true">
+        <MudNavMenu Dense="true" Style="flex:1 1 auto; overflow-y:auto; min-height:0;">
             <MudTextField @bind-Value="_search"
                           Placeholder="Search connections"
                           Adornment="Adornment.Start"

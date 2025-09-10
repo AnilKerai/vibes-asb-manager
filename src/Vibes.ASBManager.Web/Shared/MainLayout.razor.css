@@ -1,0 +1,45 @@
+/* Ensure the drawer lays out as a fixed header + scrollable content, preventing overlap and flattening */
+
+::deep .app-drawer .mud-drawer-paper {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* Header should not shrink; keep it fixed at the top */
+::deep .app-drawer .mud-drawer-header {
+  flex: 0 0 auto;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--mud-palette-lines-default, rgba(0,0,0,0.12));
+}
+
+/* Header content alignment */
+::deep .app-drawer .drawer-header-stack {
+  width: 100%;
+  align-items: center;
+}
+
+/* Keep logo size fixed and centered; never let it shrink */
+::deep .app-drawer .drawer-logo {
+  width: 150px !important;
+  height: 150px !important;
+  flex: 0 0 auto;
+  margin: 16px auto !important;
+}
+
+/* Prevent Add Connection button from shrinking/flattening; keep it centered */
+::deep .app-drawer .drawer-add-btn {
+  flex: 0 0 auto;
+  align-self: center;
+  white-space: nowrap;
+  min-height: 36px;
+  margin-bottom: 8px;
+}
+
+/* Make the connections list area scroll instead of overlapping header */
+::deep .app-drawer .mud-navmenu {
+  flex: 1 1 auto;
+  min-height: 0; /* allow flexbox to shrink this area */
+  overflow-y: auto;
+  padding-bottom: 8px;
+}
