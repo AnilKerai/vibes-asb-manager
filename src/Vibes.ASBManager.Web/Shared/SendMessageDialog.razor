@@ -7,7 +7,7 @@
             <MudTextField T="string" Label="Subject" @bind-Value="Model.Subject" tabindex="1" />
             <MudTextField T="string" Label="Correlation Id" @bind-Value="Model.CorrelationId" tabindex="2" />
             <MudAutocomplete T="string" Label="Content Type" @bind-Value="Model.ContentType" SearchFunc="SearchContentTypes" Clearable="true" tabindex="3" />
-            <CodeEditor @bind-Value="Model.Body" ContentType="Model.ContentType" Lines="12" Placeholder="Body" />
+            <CodeEditor @bind-Value="Model.Body" ContentType="@Model.ContentType" Lines="12" Placeholder="Body" />
             <MudText Typo="Typo.subtitle2" Class="mt-2">Application Properties</MudText>
             <KeyValueEditor @bind-Value="Model.Properties" />
 

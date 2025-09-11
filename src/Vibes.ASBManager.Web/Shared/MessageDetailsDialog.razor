@@ -41,9 +41,7 @@
         <MudText Typo="Typo.subtitle1" Class="mt-2">Message</MudText>
         <MudGrid Class="mb-2">
             <MudItem xs="12">
-                @* Old body input replaced by CodeEditor for better JSON/XML editing *@
-                @* <MudTextField T="string" Label="Body" Lines="8" FullWidth="true" @bind-Value="_bodyEdit" ReadOnly="@(!IsDeadLetter)" tabindex="1" /> *@
-                <CodeEditor @bind-Value="_bodyEdit" ContentType="_contentTypeEdit" Lines="14" Placeholder="Body" ReadOnly="@(!IsDeadLetter)" />
+                <CodeEditor @bind-Value="_bodyEdit" ContentType="@_contentTypeEdit" Lines="14" Placeholder="Body" ReadOnly="@(!IsDeadLetter)" />
             </MudItem>
             <MudItem xs="12" md="6">
                 <MudTextField T="string" Label="Subject" @bind-Value="_subjectEdit" ReadOnly="@(!IsDeadLetter)" tabindex="2" />
@@ -110,7 +108,7 @@
     [Inject] private IMessageSender MessageSender { get; set; } = default!;
     [Inject] private IDeadLetterMaintenance DeadLetterMaintenance { get; set; } = default!;
     [Inject] private ISnackbar Snackbar { get; set; } = default!;
-    [Inject] private IJSRuntime JS { get; set; } = default!;
+    [Inject] private IJSRuntime Js { get; set; } = default!;
 
     private bool _initialized;
     private string _bodyEdit = string.Empty;
@@ -278,7 +276,7 @@
         try
         {
             var json = JsonSerializer.Serialize(_propertyDict ?? new Dictionary<string, string>(), new JsonSerializerOptions { WriteIndented = true });
-            await JS.InvokeVoidAsync("navigator.clipboard.writeText", json);
+            await Js.InvokeVoidAsync("navigator.clipboard.writeText", json);
             Snackbar.Add("Application properties copied to clipboard.", Severity.Success);
         }
         catch
@@ -292,7 +290,7 @@
         try
         {
             var json = JsonSerializer.Serialize(_systemPropDict ?? new Dictionary<string, string>(), new JsonSerializerOptions { WriteIndented = true });
-            await JS.InvokeVoidAsync("navigator.clipboard.writeText", json);
+            await Js.InvokeVoidAsync("navigator.clipboard.writeText", json);
             Snackbar.Add("System properties copied to clipboard.", Severity.Success);
         }
         catch

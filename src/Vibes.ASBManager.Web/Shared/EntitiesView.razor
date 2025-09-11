@@ -174,11 +174,11 @@
                     <div class="d-flex align-center mb-2" style="gap:8px;">
                         <MudText Typo="Typo.h6">Subscription Rules</MudText>
                         <MudSpacer />
-                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!_canRefreshRules)" OnClick="@CreateRuleAsync">
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!CanRefreshRules)" OnClick="@CreateRuleAsync">
                             <MudIcon Icon="@Icons.Material.Filled.Add" />
                             <span class="ms-1">Add Rule</span>
                         </MudButton>
-                        <MudButton Variant="Variant.Outlined" Disabled="@(!_canRefreshRules)" OnClick="@RefreshRulesAsync">
+                        <MudButton Variant="Variant.Outlined" Disabled="@(!CanRefreshRules)" OnClick="@RefreshRulesAsync">
                             <MudIcon Icon="@Icons.Material.Filled.Refresh" />
                             <span class="ms-1">Refresh</span>
                         </MudButton>
@@ -1047,7 +1047,7 @@
         await LoadSettingsForSelection();
     }
 
-    private bool _canRefreshRules => HasConnection && SelectedIsSubscription;
+    private bool CanRefreshRules => HasConnection && SelectedIsSubscription;
 
     private async Task LoadRulesForSelection()
     {
@@ -1300,7 +1300,7 @@
 
     private async Task CreateRuleAsync()
     {
-        if (!_canRefreshRules) return;
+        if (!CanRefreshRules) return;
         var title = SelectedFriendly is { } s ? $"Create Rule - {s}" : "Create Rule";
         var parameters = new DialogParameters
         {
@@ -1342,7 +1342,7 @@
 
     private async Task DeleteRuleAsync(SubscriptionRuleInfo rule)
     {
-        if (!_canRefreshRules) return;
+        if (!CanRefreshRules) return;
         if (_rules.Count <= 1)
         {
             Snackbar.Add("Cannot delete the only rule on a subscription.", Severity.Warning);

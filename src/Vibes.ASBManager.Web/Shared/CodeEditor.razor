@@ -2,7 +2,7 @@
 @using System.Xml.Linq
 @using System.Text
 @inject ISnackbar Snackbar
-@inject IJSRuntime JS
+@inject IJSRuntime Js
 
 <MudStack Spacing="1">
     <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
@@ -176,7 +176,7 @@
                 Snackbar?.Add("Nothing to copy.", Severity.Info);
                 return;
             }
-            await JS.InvokeVoidAsync("navigator.clipboard.writeText", toCopy);
+            await Js.InvokeVoidAsync("navigator.clipboard.writeText", toCopy);
             Snackbar?.Add("Copied to clipboard.", Severity.Success);
         }
         catch

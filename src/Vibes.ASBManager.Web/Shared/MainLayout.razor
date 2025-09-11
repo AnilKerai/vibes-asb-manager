@@ -7,7 +7,7 @@
 @inject NavigationManager Nav
 @inject ProtectedLocalStorage LocalStorage
 @inject ISnackbar Snackbar
-@inject IJSRuntime JS
+@inject IJSRuntime Js
 
 <MudThemeProvider Theme="@CeruleanTheme" IsDarkMode="@_isDarkMode" />
 <MudPopoverProvider />
@@ -500,7 +500,7 @@
         }
         try
         {
-            await JS.InvokeVoidAsync("navigator.clipboard.writeText", cs);
+            await Js.InvokeVoidAsync("navigator.clipboard.writeText", cs);
             Snackbar.Add("Connection string copied", Severity.Success);
         }
         catch
