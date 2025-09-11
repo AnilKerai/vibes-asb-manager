@@ -129,7 +129,7 @@ Pinning a version ensures reproducible environments. Use `:latest` for always-up
 - `src/Vibes.ASBManager.Web/` — Blazor Server app
 - `src/Vibes.ASBManager.Application/` — app interfaces and contracts
 - `src/Vibes.ASBManager.Infrastructure.AzureServiceBus/` — Service Bus implementations
-- `src/Vibes.ASBManager.Infrastructure.Storeage.File/` — File connection store implementations
+- `src/Vibes.ASBManager.Infrastructure.Storage.File/` — File connection store implementations
 - `src/Vibes.ASBManager.Domain/` — domain models (e.g., `ConnectionInfo` with `Pinned`)
 - `src/Vibes.ASBManager.ServiceDefaults/` — shared service defaults (OpenTelemetry, health checks)
 - `tests/Vibes.ASBManager.Tests.Unit/` — unit tests for valuable code
@@ -157,3 +157,96 @@ These are mainly for local diagnostics and Compose orchestration.
   - Ensure it is running and has sufficient resources/disk space.
 
 ---
+
+## Helper scripts (Docker runners)
+
+Two convenience scripts are provided in `scripts/` to run the Web app in Docker with sensible defaults and a persistent volume for `App_Data`.
+
+Scripts:
+
+- `scripts/run-docker-mac.sh` — macOS/Linux (Bash)
+- `scripts/run-docker-win.ps1` — Windows (PowerShell)
+
+What they do:
+
+- Create the named volume if it doesn’t exist (default: `vibes-asb-manager-data`).
+- Remove any existing container with the same name (default: `vibes-asb-manager`).
+- Run `anilkerai/vibes-asb-manager-web` mapping host port to container `8080` and persisting `/app/App_Data`.
+
+Environment variables / parameters:
+
+- Image/tag: `WEB_IMAGE` (Bash) / `-Image` (PowerShell). Default: `anilkerai/vibes-asb-manager-web:latest`.
+- Volume name: `VOLUME_NAME` / `-VolumeName`. Default: `vibes-asb-manager-data`.
+- Container name: `CONTAINER_NAME` / `-ContainerName`. Default: `vibes-asb-manager`.
+- Host port: `PORT` / `-Port`. Default: `9000`.
+
+### macOS/Linux
+
+1) Make the script executable (first time only):
+
+```bash
+chmod 700 scripts/run-docker-mac.sh
+```
+
+2) Run with defaults:
+
+```bash
+./scripts/run-docker-mac.sh
+```
+
+3) Override defaults via environment variables (optional):
+
+```bash
+WEB_IMAGE=anilkerai/vibes-asb-manager-web:latest \
+VOLUME_NAME=vibes-asb-manager-data \
+CONTAINER_NAME=vibes-asb-manager \
+PORT=9000 \
+./scripts/run-docker-mac.sh
+```
+
+Then open http://localhost:9000 (or the port you chose).
+
+### Windows (PowerShell)
+
+Run with defaults:
+
+```powershell
+./scripts/run-docker-win.ps1
+```
+
+Override with parameters:
+
+```powershell
+./scripts/run-docker-win.ps1 -Image anilkerai/vibes-asb-manager-web:latest -VolumeName vibes-asb-manager-data -ContainerName vibes-asb-manager -Port 9000
+```
+
+Or use environment variables:
+
+```powershell
+$env:WEB_IMAGE='anilkerai/vibes-asb-manager-web:latest'
+$env:VOLUME_NAME='vibes-asb-manager-data'
+$env:CONTAINER_NAME='vibes-asb-manager'
+$env:PORT=9000
+./scripts/run-docker-win.ps1
+```
+
+If your PowerShell execution policy blocks the script, you can temporarily allow it for the current session:
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+```
+
+### Useful Docker commands
+
+- Stop and remove the running container:
+
+```bash
+docker stop vibes-asb-manager && docker rm vibes-asb-manager
+```
+
+- Tail logs:
+
+```bash
+docker logs -f vibes-asb-manager
+```
+
