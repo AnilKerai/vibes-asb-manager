@@ -2,6 +2,7 @@
 @using System.Xml.Linq
 @using System.Text
 @inject ISnackbar Snackbar
+@inject IJSRuntime JS
 
 <MudStack Spacing="1">
     <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
@@ -27,6 +28,10 @@
         {
             <MudChip T="string" Color="Color.Info" Variant="Variant.Outlined" Size="Size.Small">@ContentType</MudChip>
         }
+        <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="@CopyContent">
+            <MudIcon Icon="@Icons.Material.Filled.ContentCopy" />
+            <span class="ml-1">Copy</span>
+        </MudButton>
     </MudStack>
 
     <div class="code-editor-container">
@@ -158,6 +163,25 @@
         catch
         {
             Snackbar?.Add("Invalid Base64 content.", Severity.Error);
+        }
+    }
+
+    private async Task CopyContent()
+    {
+        try
+        {
+            var toCopy = _text ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(toCopy))
+            {
+                Snackbar?.Add("Nothing to copy.", Severity.Info);
+                return;
+            }
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", toCopy);
+            Snackbar?.Add("Copied to clipboard.", Severity.Success);
+        }
+        catch
+        {
+            Snackbar?.Add("Failed to copy.", Severity.Error);
         }
     }
 }
