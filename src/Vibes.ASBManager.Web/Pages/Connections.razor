@@ -18,7 +18,7 @@
     }
     else
     {
-        <MudTabs @bind-ActivePanelIndex="_activeTabIndex">
+        <MudTabs @bind-ActivePanelIndex="_activeTabIndex" KeepPanelsAlive="true">
             @foreach (var oc in _openConnections)
             {
                 <MudTabPanel @key="oc.Id">
