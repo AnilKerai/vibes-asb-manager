@@ -6,9 +6,9 @@ Connections are stored locally in `App_Data/connections.json` so you can run it 
 
 ## Disclaimer
 
-I vibe-coded this tool. And yes, I hate myself for using that term! 😅
+This tool was built with AI-assisted code while experimenting with AI code assistants. 
 
-It is however, a useful technique to get a quick dev tool up and running though, so I don't apologize! 😂
+I found it to be a useful technique to get a quick dev tool up and running, so I don't apologize! 😂
 
 With that in mind, feel free to suggest / make improvements - i'm not particularly precious about the code.
 
