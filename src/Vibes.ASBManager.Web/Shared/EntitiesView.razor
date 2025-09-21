@@ -1495,7 +1495,9 @@
         StopLiveActive();
         _liveActive = true;
         // Reset paging to latest when starting live
-        _activeAnchor = null;
+        _activeAnchor = (_activeMessages is { Count: > 0 })
+            ? (_activeMessages.Max(m => m.SequenceNumber) == long.MaxValue ? long.MaxValue : _activeMessages.Max(m => m.SequenceNumber) + 1)
+            : null;
         _activeHistory.Clear();
         _liveActiveCts = new CancellationTokenSource();
         _ = Task.Run(async () =>
@@ -1524,7 +1526,9 @@
         StopLiveDlq();
         _liveDlq = true;
         // Reset paging to latest when starting live
-        _dlqAnchor = null;
+        _dlqAnchor = (_dlqMessages is { Count: > 0 })
+            ? (_dlqMessages.Max(m => m.SequenceNumber) == long.MaxValue ? long.MaxValue : _dlqMessages.Max(m => m.SequenceNumber) + 1)
+            : null;
         _dlqHistory.Clear();
         _liveDlqCts = new CancellationTokenSource();
         _ = Task.Run(async () =>
