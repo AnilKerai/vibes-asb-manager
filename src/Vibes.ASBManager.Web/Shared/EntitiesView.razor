@@ -209,25 +209,13 @@
             <ActiveMessagesTable
                 Items="_activeMessages"
                 CanRefresh="@CanRefreshMessages"
-                UiRowsPerPage="@UiRowsPerPage"
-                PrevEnabled="@(_activeHistory.Count > 0)"
-                NextEnabled="@(_activeMessages is not null && _activeMessages.Count >= FetchSize)"
                 OnRefresh="@RefreshActiveAsync"
-                OnPrev="@OnActivePrevPage"
-                OnNext="@OnActiveNextPage"
-                OnGoToEnd="@OnActiveGoToEnd"
                 OnRowClick="@OnActiveRowClick" />
 
             <DlqMessagesTable
                 Items="_dlqMessages"
                 CanRefresh="@CanRefreshMessages"
-                UiRowsPerPage="@UiRowsPerPage"
-                PrevEnabled="@(_dlqHistory.Count > 0)"
-                NextEnabled="@(_dlqMessages is not null && _dlqMessages.Count >= FetchSize)"
                 OnRefresh="@RefreshDlqAsync"
-                OnPrev="@OnDlqPrevPage"
-                OnNext="@OnDlqNextPage"
-                OnGoToEnd="@OnDlqGoToEnd"
                 OnRowClick="@OnDlqRowClick" />
         </MudItem>
     </MudGrid>
@@ -280,7 +268,7 @@
     private bool _refreshingActive;
     private bool _refreshingDlq;
     private const int FetchSize = 50; // how many messages to fetch per API call
-    private const int UiRowsPerPage = 25; // how many rows the table shows per page
+    private const int UiRowsPerPage = 15; // how many rows the table shows per page
     private long? _activeAnchor;
     private long? _dlqAnchor;
     private Stack<long?> _activeHistory = new();
@@ -289,6 +277,8 @@
     private bool _liveDlq;
     private CancellationTokenSource? _liveActiveCts;
     private CancellationTokenSource? _liveDlqCts;
+    private bool _pendingActiveClear;
+    private bool _pendingDlqClear;
 
     // Create subscription state
     private bool _creatingSubscription;
@@ -359,6 +349,12 @@
         {
             var purged = await MessageMaintenance.PurgeSubscriptionAsync(_connectionString, topicName, subscriptionName, maxMessages: 1000);
             Snackbar.Add($"Purged {purged} messages from {topicName}/{subscriptionName}.", Severity.Success);
+            // Clear UI state immediately and reset anchors; live loop will continue from empty
+            _pendingActiveClear = true;
+            _activeMessages.Clear();
+            _activeAnchor = null;
+            _activeHistory.Clear();
+            try { await InvokeAsync(StateHasChanged); } catch { }
             await RefreshActiveIfNeededAsync();
         }
         catch (Exception ex)
@@ -381,6 +377,12 @@
         {
             var purged = await DeadLetterMaintenance.PurgeSubscriptionDeadLetterAsync(_connectionString, topicName, subscriptionName, maxMessages: 1000);
             Snackbar.Add($"Purged {purged} DLQ messages from {topicName}/{subscriptionName}.", Severity.Success);
+            // Clear UI state immediately and reset anchors; live loop will continue from empty
+            _pendingDlqClear = true;
+            _dlqMessages.Clear();
+            _dlqAnchor = null;
+            _dlqHistory.Clear();
+            try { await InvokeAsync(StateHasChanged); } catch { }
             await RefreshDlqIfNeededAsync();
         }
         catch (Exception ex)
@@ -673,6 +675,12 @@
         {
             var purged = await MessageMaintenance.PurgeQueueAsync(_connectionString, queueName, maxMessages: 1000);
             Snackbar.Add($"Purged {purged} messages from {queueName}.", Severity.Success);
+            // Clear UI state immediately and reset anchors; live loop will continue from empty
+            _pendingActiveClear = true;
+            _activeMessages.Clear();
+            _activeAnchor = null;
+            _activeHistory.Clear();
+            try { await InvokeAsync(StateHasChanged); } catch { }
             await RefreshActiveIfNeededAsync();
         }
         catch (Exception ex)
@@ -695,6 +703,12 @@
         {
             var purged = await DeadLetterMaintenance.PurgeQueueDeadLetterAsync(_connectionString, queueName, maxMessages: 1000);
             Snackbar.Add($"Purged {purged} DLQ messages from {queueName}.", Severity.Success);
+            // Clear UI state immediately and reset anchors; live loop will continue from empty
+            _pendingDlqClear = true;
+            _dlqMessages.Clear();
+            _dlqAnchor = null;
+            _dlqHistory.Clear();
+            try { await InvokeAsync(StateHasChanged); } catch { }
             await RefreshDlqIfNeededAsync();
         }
         catch (Exception ex)
@@ -1391,6 +1405,26 @@
             {
                 items = await MessageBrowser.PeekSubscriptionAsync(_connectionString!, t, s, maxMessages: FetchSize, fromSequenceNumber: _activeAnchor);
             }
+            // If not in live mode and our anchor points past the end (yielding no items), reset to null and refetch once
+            if (!_liveActive && _activeAnchor.HasValue && (items is null || items.Count == 0))
+            {
+                _activeAnchor = null;
+                if (TryGetQueue(out var q2))
+                {
+                    items = await MessageBrowser.PeekQueueAsync(_connectionString!, q2, maxMessages: FetchSize, fromSequenceNumber: _activeAnchor);
+                }
+                else if (TryGetSubscription(out var t2, out var s2))
+                {
+                    items = await MessageBrowser.PeekSubscriptionAsync(_connectionString!, t2, s2, maxMessages: FetchSize, fromSequenceNumber: _activeAnchor);
+                }
+            }
+            if (_liveActive && _pendingActiveClear)
+            {
+                _activeMessages.Clear();
+                _activeHistory.Clear();
+                _activeAnchor = null;
+                _pendingActiveClear = false;
+            }
             if (_liveActive)
             {
                 if (items.Count > 0)
@@ -1431,6 +1465,26 @@
             else if (TryGetSubscription(out var t, out var s))
             {
                 items = await MessageBrowser.PeekSubscriptionDeadLetterAsync(_connectionString!, t, s, maxMessages: FetchSize, fromSequenceNumber: _dlqAnchor);
+            }
+            // If not in live mode and our anchor points past the end (yielding no items), reset to null and refetch once
+            if (!_liveDlq && _dlqAnchor.HasValue && (items is null || items.Count == 0))
+            {
+                _dlqAnchor = null;
+                if (TryGetQueue(out var q2))
+                {
+                    items = await MessageBrowser.PeekQueueDeadLetterAsync(_connectionString!, q2, maxMessages: FetchSize, fromSequenceNumber: _dlqAnchor);
+                }
+                else if (TryGetSubscription(out var t2, out var s2))
+                {
+                    items = await MessageBrowser.PeekSubscriptionDeadLetterAsync(_connectionString!, t2, s2, maxMessages: FetchSize, fromSequenceNumber: _dlqAnchor);
+                }
+            }
+            if (_liveDlq && _pendingDlqClear)
+            {
+                _dlqMessages.Clear();
+                _dlqHistory.Clear();
+                _dlqAnchor = null;
+                _pendingDlqClear = false;
             }
             if (_liveDlq)
             {
