@@ -215,6 +215,7 @@
                 OnRefresh="@RefreshActiveAsync"
                 OnPrev="@OnActivePrevPage"
                 OnNext="@OnActiveNextPage"
+                OnGoToEnd="@OnActiveGoToEnd"
                 OnRowClick="@OnActiveRowClick" />
 
             <DlqMessagesTable
@@ -226,6 +227,7 @@
                 OnRefresh="@RefreshDlqAsync"
                 OnPrev="@OnDlqPrevPage"
                 OnNext="@OnDlqNextPage"
+                OnGoToEnd="@OnDlqGoToEnd"
                 OnRowClick="@OnDlqRowClick" />
         </MudItem>
     </MudGrid>
@@ -1401,7 +1403,7 @@
             else
             {
                 _activeMessages = items
-                    .OrderByDescending(m => m.EnqueuedTime)
+                    .OrderBy(m => m.EnqueuedTime)
                     .ToList();
             }
         }
@@ -1442,7 +1444,7 @@
             else
             {
                 _dlqMessages = items
-                    .OrderByDescending(m => m.EnqueuedTime)
+                    .OrderBy(m => m.EnqueuedTime)
                     .ToList();
             }
         }
@@ -1593,7 +1595,7 @@
             map[msg.SequenceNumber] = msg;
 
         return map.Values
-                  .OrderByDescending(m => m.EnqueuedTime)
+                  .OrderBy(m => m.EnqueuedTime)
                   .Take(windowSize)
                   .ToList();
     }
@@ -1622,6 +1624,20 @@
         await RefreshActiveAsync();
     }
 
+    private async Task OnActiveGoToEnd()
+    {
+        if (!CanRefreshMessages) return;
+        if (!_liveActive)
+            StartLiveActive();
+        if (_activeMessages is not null && _activeMessages.Count > 0)
+        {
+            var maxSeq = _activeMessages.Max(m => m.SequenceNumber);
+            _activeAnchor = maxSeq == long.MaxValue ? long.MaxValue : maxSeq + 1;
+        }
+        _activeHistory.Clear();
+        await RefreshActiveAsync();
+    }
+
     private async Task OnDlqRowClick(TableRowClickEventArgs<MessagePreview> args)
     {
         if (args?.Item is null) return;
@@ -1643,6 +1659,20 @@
         if (!CanRefreshMessages) return;
         if (_dlqHistory.Count == 0) return;
         _dlqAnchor = _dlqHistory.Pop();
+        await RefreshDlqAsync();
+    }
+
+    private async Task OnDlqGoToEnd()
+    {
+        if (!CanRefreshMessages) return;
+        if (!_liveDlq)
+            StartLiveDlq();
+        if (_dlqMessages is not null && _dlqMessages.Count > 0)
+        {
+            var maxSeq = _dlqMessages.Max(m => m.SequenceNumber);
+            _dlqAnchor = maxSeq == long.MaxValue ? long.MaxValue : maxSeq + 1;
+        }
+        _dlqHistory.Clear();
         await RefreshDlqAsync();
     }
 

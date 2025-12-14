@@ -4,6 +4,7 @@
         <MudSpacer />
         <MudIconButton Icon="@Icons.Material.Filled.ChevronLeft" Disabled="@(!PrevEnabled || !CanRefresh)" OnClick="@OnPrev" />
         <MudIconButton Icon="@Icons.Material.Filled.ChevronRight" Disabled="@(!NextEnabled || !CanRefresh)" OnClick="@OnNext" />
+        <MudIconButton Icon="@Icons.Material.Filled.LastPage" Disabled="@(!CanRefresh)" OnClick="@OnGoToEnd" />
         <MudButton Variant="Variant.Outlined" Disabled="@(!CanRefresh)" OnClick="@OnRefresh">
             <MudIcon Icon="@Icons.Material.Filled.Refresh" />
             <span class="ms-1">Refresh</span>
@@ -38,5 +39,6 @@
     [Parameter] public EventCallback OnRefresh { get; set; }
     [Parameter] public EventCallback OnPrev { get; set; }
     [Parameter] public EventCallback OnNext { get; set; }
+    [Parameter] public EventCallback OnGoToEnd { get; set; }
     [Parameter] public EventCallback<TableRowClickEventArgs<MessagePreview>> OnRowClick { get; set; }
 }
