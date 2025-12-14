@@ -892,6 +892,11 @@
         StopLiveDlq();
         _activeMessages.Clear();
         _dlqMessages.Clear();
+        // Reset anchors and paging history for new selection
+        _activeAnchor = null;
+        _dlqAnchor = null;
+        _activeHistory.Clear();
+        _dlqHistory.Clear();
         await LoadSettingsForSelection();
         await LoadRulesForSelection();
         // auto-load message lists for the new selection
@@ -1384,9 +1389,21 @@
             {
                 items = await MessageBrowser.PeekSubscriptionAsync(_connectionString!, t, s, maxMessages: FetchSize, fromSequenceNumber: _activeAnchor);
             }
-            _activeMessages = items
-                .OrderByDescending(m => m.EnqueuedTime)
-                .ToList();
+            if (_liveActive)
+            {
+                if (items.Count > 0)
+                {
+                    var maxSeq = items.Max(m => m.SequenceNumber);
+                    _activeAnchor = maxSeq == long.MaxValue ? long.MaxValue : maxSeq + 1;
+                }
+                _activeMessages = MergeLatestWindow(_activeMessages, items, FetchSize);
+            }
+            else
+            {
+                _activeMessages = items
+                    .OrderByDescending(m => m.EnqueuedTime)
+                    .ToList();
+            }
         }
         catch (Exception ex)
         {
@@ -1413,9 +1430,21 @@
             {
                 items = await MessageBrowser.PeekSubscriptionDeadLetterAsync(_connectionString!, t, s, maxMessages: FetchSize, fromSequenceNumber: _dlqAnchor);
             }
-            _dlqMessages = items
-                .OrderByDescending(m => m.EnqueuedTime)
-                .ToList();
+            if (_liveDlq)
+            {
+                if (items.Count > 0)
+                {
+                    var maxSeq = items.Max(m => m.SequenceNumber);
+                    _dlqAnchor = maxSeq == long.MaxValue ? long.MaxValue : maxSeq + 1;
+                }
+                _dlqMessages = MergeLatestWindow(_dlqMessages, items, FetchSize);
+            }
+            else
+            {
+                _dlqMessages = items
+                    .OrderByDescending(m => m.EnqueuedTime)
+                    .ToList();
+            }
         }
         catch (Exception ex)
         {
@@ -1549,6 +1578,24 @@
         try { _liveDlqCts?.Cancel(); } catch { }
         try { _liveDlqCts?.Dispose(); } catch { }
         _liveDlqCts = null;
+    }
+
+    // Merge helper: dedupe by sequence, keep most recent by EnqueuedTime, limit to window size
+    private static List<MessagePreview> MergeLatestWindow(List<MessagePreview> existing, IReadOnlyList<MessagePreview> incoming, int windowSize)
+    {
+        if (incoming is null || incoming.Count == 0)
+            return existing ?? new List<MessagePreview>();
+
+        var map = (existing ?? new List<MessagePreview>())
+            .ToDictionary(m => m.SequenceNumber, m => m);
+
+        foreach (var msg in incoming)
+            map[msg.SequenceNumber] = msg;
+
+        return map.Values
+                  .OrderByDescending(m => m.EnqueuedTime)
+                  .Take(windowSize)
+                  .ToList();
     }
 
     private async Task OnActiveRowClick(TableRowClickEventArgs<MessagePreview> args)
