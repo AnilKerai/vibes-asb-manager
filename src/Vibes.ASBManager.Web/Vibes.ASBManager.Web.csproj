@@ -5,10 +5,13 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>Vibes.ASBManager.Web</RootNamespace>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <MinVerTagPrefix>v</MinVerTagPrefix>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="MudBlazor" Version="8.12.0" />
+    <PackageReference Include="MinVer" Version="5.*" PrivateAssets="all" />
   </ItemGroup>
 
   <!-- Prevent accidental publish of local data files -->

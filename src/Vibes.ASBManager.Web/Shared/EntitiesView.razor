@@ -209,13 +209,17 @@
             <ActiveMessagesTable
                 Items="_activeMessages"
                 CanRefresh="@CanRefreshMessages"
-                OnRefresh="@RefreshActiveAsync"
+                OnRefresh="@OnActiveRefresh"
+
+                Count="@_activeCount"
                 OnRowClick="@OnActiveRowClick" />
 
             <DlqMessagesTable
                 Items="_dlqMessages"
                 CanRefresh="@CanRefreshMessages"
-                OnRefresh="@RefreshDlqAsync"
+                OnRefresh="@OnDlqRefresh"
+
+                Count="@_dlqCount"
                 OnRowClick="@OnDlqRowClick" />
         </MudItem>
     </MudGrid>
@@ -231,13 +235,10 @@
 
     private IReadOnlyList<QueueSummary>? _queues;
     private IReadOnlyList<TopicSummary>? _topics;
-    private IReadOnlyList<SubscriptionSummary>? _subscriptions;
+
     private Dictionary<string, IReadOnlyList<SubscriptionSummary>> _topicSubscriptions = new();
 
-    private string? _peekedQueue;
-    private IReadOnlyList<MessagePreview>? _peekedMessages;
 
-    private TopicSummary? _selectedTopic;
     private string? _prevConnectionId;
 
     // Subscription rules (filters)
@@ -268,7 +269,7 @@
     private bool _refreshingActive;
     private bool _refreshingDlq;
     private const int FetchSize = 50; // how many messages to fetch per API call
-    private const int UiRowsPerPage = 15; // how many rows the table shows per page
+
     private long? _activeAnchor;
     private long? _dlqAnchor;
     private Stack<long?> _activeHistory = new();
@@ -279,6 +280,10 @@
     private CancellationTokenSource? _liveDlqCts;
     private bool _pendingActiveClear;
     private bool _pendingDlqClear;
+    private long? _activeCount;
+    private long? _dlqCount;
+    private CancellationTokenSource? _countsCts;
+    private const int CountsRefreshIntervalMs = 2000;
 
     // Create subscription state
     private bool _creatingSubscription;
@@ -356,6 +361,7 @@
             _activeHistory.Clear();
             try { await InvokeAsync(StateHasChanged); } catch { }
             await RefreshActiveIfNeededAsync();
+            await RefreshCountsAsync();
         }
         catch (Exception ex)
         {
@@ -384,6 +390,7 @@
             _dlqHistory.Clear();
             try { await InvokeAsync(StateHasChanged); } catch { }
             await RefreshDlqIfNeededAsync();
+            await RefreshCountsAsync();
         }
         catch (Exception ex)
         {
@@ -396,18 +403,21 @@
         _connectionString = Connection?.ConnectionString;
         StopLiveActive();
         StopLiveDlq();
+        StopCountsPolling();
         _activeMessages.Clear();
         _dlqMessages.Clear();
         _activeAnchor = null;
         _dlqAnchor = null;
         _activeHistory.Clear();
         _dlqHistory.Clear();
+        _activeCount = null;
+        _dlqCount = null;
         _queues = null;
         _topics = null;
-        _subscriptions = null;
-        _selectedTopic = null;
-        _peekedQueue = null;
-        _peekedMessages = null;
+
+
+
+
         _selectedTreeValue = null;
         _rules.Clear();
         _queuesExpanded = false;
@@ -468,81 +478,15 @@
         }
     }
 
-    private async Task PeekQueue(string queueName)
-    {
-        if (string.IsNullOrWhiteSpace(_connectionString)) return;
-        try
-        {
-            _peekedQueue = $"Queue: {queueName}";
-            _peekedMessages = await MessageBrowser.PeekQueueAsync(_connectionString, queueName, maxMessages: 50);
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"Failed to peek queue: {ex.Message}", Severity.Error);
-        }
-    }
+    
 
-    private async Task PeekQueueDlq(string queueName)
-    {
-        if (string.IsNullOrWhiteSpace(_connectionString)) return;
-        try
-        {
-            _peekedQueue = $"Queue DLQ: {queueName}";
-            _peekedMessages = await MessageBrowser.PeekQueueDeadLetterAsync(_connectionString, queueName, maxMessages: 50);
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"Failed to peek queue DLQ: {ex.Message}", Severity.Error);
-        }
-    }
+    
 
-    private async Task OnTopicClick(TableRowClickEventArgs<TopicSummary> args)
-    {
-        if (string.IsNullOrWhiteSpace(_connectionString)) return;
-        try
-        {
-            _selectedTopic = args.Item;
-            var topicName = args.Item?.Name;
-            if (string.IsNullOrWhiteSpace(topicName)) return;
-            _subscriptions = await SubscriptionAdmin.ListSubscriptionsAsync(_connectionString, topicName);
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"Failed to load subscriptions: {ex.Message}", Severity.Error);
-        }
-    }
+    
 
-    private async Task PeekSubscription(string subscriptionName)
-    {
-        if (string.IsNullOrWhiteSpace(_connectionString)) return;
-        var topicName = _selectedTopic?.Name;
-        if (string.IsNullOrWhiteSpace(topicName)) return;
-        try
-        {
-            _peekedQueue = $"Subscription: {topicName}/{subscriptionName}";
-            _peekedMessages = await MessageBrowser.PeekSubscriptionAsync(_connectionString, topicName, subscriptionName, maxMessages: 50);
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"Failed to peek subscription: {ex.Message}", Severity.Error);
-        }
-    }
+    
 
-    private async Task PeekSubscriptionDlq(string subscriptionName)
-    {
-        if (string.IsNullOrWhiteSpace(_connectionString)) return;
-        var topicName = _selectedTopic?.Name;
-        if (string.IsNullOrWhiteSpace(topicName)) return;
-        try
-        {
-            _peekedQueue = $"Subscription DLQ: {topicName}/{subscriptionName}";
-            _peekedMessages = await MessageBrowser.PeekSubscriptionDeadLetterAsync(_connectionString, topicName, subscriptionName, maxMessages: 50);
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"Failed to peek subscription DLQ: {ex.Message}", Severity.Error);
-        }
-    }
+    
 
     private async Task OpenSendToQueue(string queueName)
     {
@@ -557,49 +501,69 @@
         if (result is { Canceled: false, Data: SendMessageRequest req })
         {
             var count = req.Count < 1 ? 1 : req.Count;
-            var sent = 0;
             var contentType = string.IsNullOrWhiteSpace(req.ContentType) ? null : req.ContentType;
-            try
+            var startVerb = req.ScheduledEnqueueUtc.HasValue ? "Scheduling" : "Sending";
+            Snackbar.Add(count == 1 ? $"{startVerb} 1 message to {queueName}..." : $"{startVerb} {count} messages to {queueName}...", Severity.Info);
+            var cs = _connectionString!;
+            _ = Task.Run(async () =>
             {
-                for (var i = 0; i < count; i++)
+                var sent = 0;
+                Exception? error = null;
+                try
                 {
-                    DateTimeOffset? sched = req.ScheduledEnqueueUtc;
-                    if (sched.HasValue && req.IntervalSeconds > 0)
+                    for (var i = 0; i < count; i++)
                     {
-                        sched = sched.Value.AddSeconds(req.IntervalSeconds * i);
-                    }
-                    await MessageSender.SendToQueueAsync(
-                        
-                        connectionString: _connectionString,
-                        queueName: queueName,
-                        body: req.Body,
-                        subject: req.Subject,
-                        correlationId: req.CorrelationId,
-                        properties: req.Properties,
-                        contentType: contentType,
-                        messageId: null,
-                        scheduledEnqueueTime: sched);
-                    sent++;
-                    if (!req.ScheduledEnqueueUtc.HasValue && req.IntervalSeconds > 0 && i < count - 1)
-                    {
-                        try { await Task.Delay(TimeSpan.FromSeconds(req.IntervalSeconds)); } catch { }
+                        DateTimeOffset? sched = req.ScheduledEnqueueUtc;
+                        if (sched.HasValue && req.IntervalSeconds > 0)
+                        {
+                            sched = sched.Value.AddSeconds(req.IntervalSeconds * i);
+                        }
+                        await MessageSender.SendToQueueAsync(
+                            connectionString: cs,
+                            queueName: queueName,
+                            body: req.Body,
+                            subject: req.Subject,
+                            correlationId: req.CorrelationId,
+                            properties: req.Properties,
+                            contentType: contentType,
+                            messageId: null,
+                            scheduledEnqueueTime: sched);
+                        sent++;
+                        if (!req.ScheduledEnqueueUtc.HasValue && req.IntervalSeconds > 0 && i < count - 1)
+                        {
+                            try { await Task.Delay(TimeSpan.FromSeconds(req.IntervalSeconds)); } catch { }
+                        }
                     }
                 }
-                var verb = req.ScheduledEnqueueUtc.HasValue ? "Scheduled" : "Sent";
-                Snackbar.Add(sent == 1 ? $"{verb} 1 message to {queueName}." : $"{verb} {sent} messages to {queueName}.", Severity.Success);
-                if (CanRefreshMessages)
+                catch (Exception ex)
                 {
-                    await RefreshActiveAsync();
-                    try { await InvokeAsync(StateHasChanged); } catch { }
+                    error = ex;
                 }
-            }
-            catch (Exception ex)
-            {
-                if (sent > 0)
-                    Snackbar.Add($"Sent {sent} messages before failure: {ex.Message}", Severity.Warning);
-                else
-                    Snackbar.Add($"Failed to send: {ex.Message}", Severity.Error);
-            }
+                finally
+                {
+                    var endVerb = req.ScheduledEnqueueUtc.HasValue ? "Scheduled" : "Sent";
+                    await InvokeAsync(() =>
+                    {
+                        if (error is null)
+                        {
+                            Snackbar.Add(sent == 1 ? $"{endVerb} 1 message to {queueName}." : $"{endVerb} {sent} messages to {queueName}.", Severity.Success);
+                        }
+                        else
+                        {
+                            if (sent > 0)
+                                Snackbar.Add($"Sent {sent} messages before failure: {error.Message}", Severity.Warning);
+                            else
+                                Snackbar.Add($"Failed to send: {error.Message}", Severity.Error);
+                        }
+                    });
+                    if (CanRefreshMessages)
+                    {
+                        await RefreshActiveAsync();
+                        await RefreshCountsAsync();
+                        try { await InvokeAsync(StateHasChanged); } catch { }
+                    }
+                }
+            });
         }
     }
 
@@ -616,48 +580,69 @@
         if (result is { Canceled: false, Data: SendMessageRequest req })
         {
             var count = req.Count < 1 ? 1 : req.Count;
-            var sent = 0;
             var contentType = string.IsNullOrWhiteSpace(req.ContentType) ? null : req.ContentType;
-            try
+            var startVerb = req.ScheduledEnqueueUtc.HasValue ? "Scheduling" : "Sending";
+            Snackbar.Add(count == 1 ? $"{startVerb} 1 message to {topicName}..." : $"{startVerb} {count} messages to {topicName}...", Severity.Info);
+            var cs = _connectionString!;
+            _ = Task.Run(async () =>
             {
-                for (var i = 0; i < count; i++)
+                var sent = 0;
+                Exception? error = null;
+                try
                 {
-                    DateTimeOffset? sched = req.ScheduledEnqueueUtc;
-                    if (sched.HasValue && req.IntervalSeconds > 0)
+                    for (var i = 0; i < count; i++)
                     {
-                        sched = sched.Value.AddSeconds(req.IntervalSeconds * i);
-                    }
-                    await MessageSender.SendToTopicAsync(
-                        connectionString: _connectionString,
-                        topicName: topicName,
-                        body: req.Body,
-                        subject: req.Subject,
-                        correlationId: req.CorrelationId,
-                        properties: req.Properties,
-                        contentType: contentType,
-                        messageId: null,
-                        scheduledEnqueueTime: sched);
-                    sent++;
-                    if (!req.ScheduledEnqueueUtc.HasValue && req.IntervalSeconds > 0 && i < count - 1)
-                    {
-                        try { await Task.Delay(TimeSpan.FromSeconds(req.IntervalSeconds)); } catch { }
+                        DateTimeOffset? sched = req.ScheduledEnqueueUtc;
+                        if (sched.HasValue && req.IntervalSeconds > 0)
+                        {
+                            sched = sched.Value.AddSeconds(req.IntervalSeconds * i);
+                        }
+                        await MessageSender.SendToTopicAsync(
+                            connectionString: cs,
+                            topicName: topicName,
+                            body: req.Body,
+                            subject: req.Subject,
+                            correlationId: req.CorrelationId,
+                            properties: req.Properties,
+                            contentType: contentType,
+                            messageId: null,
+                            scheduledEnqueueTime: sched);
+                        sent++;
+                        if (!req.ScheduledEnqueueUtc.HasValue && req.IntervalSeconds > 0 && i < count - 1)
+                        {
+                            try { await Task.Delay(TimeSpan.FromSeconds(req.IntervalSeconds)); } catch { }
+                        }
                     }
                 }
-                var verb = req.ScheduledEnqueueUtc.HasValue ? "Scheduled" : "Sent";
-                Snackbar.Add(sent == 1 ? $"{verb} 1 message to {topicName}." : $"{verb} {sent} messages to {topicName}.", Severity.Success);
-                if (CanRefreshMessages)
+                catch (Exception ex)
                 {
-                    await RefreshActiveAsync();
-                    try { await InvokeAsync(StateHasChanged); } catch { }
+                    error = ex;
                 }
-            }
-            catch (Exception ex)
-            {
-                if (sent > 0)
-                    Snackbar.Add($"Sent {sent} messages before failure: {ex.Message}", Severity.Warning);
-                else
-                    Snackbar.Add($"Failed to send: {ex.Message}", Severity.Error);
-            }
+                finally
+                {
+                    var endVerb = req.ScheduledEnqueueUtc.HasValue ? "Scheduled" : "Sent";
+                    await InvokeAsync(() =>
+                    {
+                        if (error is null)
+                        {
+                            Snackbar.Add(sent == 1 ? $"{endVerb} 1 message to {topicName}." : $"{endVerb} {sent} messages to {topicName}.", Severity.Success);
+                        }
+                        else
+                        {
+                            if (sent > 0)
+                                Snackbar.Add($"Sent {sent} messages before failure: {error.Message}", Severity.Warning);
+                            else
+                                Snackbar.Add($"Failed to send: {error.Message}", Severity.Error);
+                        }
+                    });
+                    if (CanRefreshMessages)
+                    {
+                        await RefreshActiveAsync();
+                        await RefreshCountsAsync();
+                        try { await InvokeAsync(StateHasChanged); } catch { }
+                    }
+                }
+            });
         }
     }
 
@@ -682,6 +667,7 @@
             _activeHistory.Clear();
             try { await InvokeAsync(StateHasChanged); } catch { }
             await RefreshActiveIfNeededAsync();
+            await RefreshCountsAsync();
         }
         catch (Exception ex)
         {
@@ -710,6 +696,7 @@
             _dlqHistory.Clear();
             try { await InvokeAsync(StateHasChanged); } catch { }
             await RefreshDlqIfNeededAsync();
+            await RefreshCountsAsync();
         }
         catch (Exception ex)
         {
@@ -733,6 +720,7 @@
             Snackbar.Add($"Replayed {replayed} DLQ messages for {queueName}.", Severity.Success);
             await RefreshActiveIfNeededAsync();
             await RefreshDlqIfNeededAsync();
+            await RefreshCountsAsync();
         }
         catch (Exception ex)
         {
@@ -808,33 +796,9 @@
             await LoadEntities();
     }
 
-    private async Task PeekSelected()
-    {
-        if (!HasConnection) return;
-        if (TryGetQueue(out var q))
-        {
-            await PeekQueue(q);
-        }
-        else if (TryGetSubscription(out var t, out var s))
-        {
-            _selectedTopic = new TopicSummary { Name = t, SubscriptionCount = 0, ScheduledMessageCount = 0 };
-            await PeekSubscription(s);
-        }
-    }
+    
 
-    private async Task PeekDlqSelected()
-    {
-        if (!HasConnection) return;
-        if (TryGetQueue(out var q))
-        {
-            await PeekQueueDlq(q);
-        }
-        else if (TryGetSubscription(out var t, out var s))
-        {
-            _selectedTopic = new TopicSummary { Name = t, SubscriptionCount = 0, ScheduledMessageCount = 0 };
-            await PeekSubscriptionDlq(s);
-        }
-    }
+    
 
     private async Task SendToSelected()
     {
@@ -906,6 +870,7 @@
         // stop live polling and clear lists on entity switch
         StopLiveActive();
         StopLiveDlq();
+        StopCountsPolling();
         _activeMessages.Clear();
         _dlqMessages.Clear();
         // Reset anchors and paging history for new selection
@@ -915,6 +880,8 @@
         _dlqHistory.Clear();
         await LoadSettingsForSelection();
         await LoadRulesForSelection();
+        await RefreshCountsAsync();
+        StartCountsPolling();
         // auto-load message lists for the new selection
         await RefreshActiveAsync();
         await RefreshDlqAsync();
@@ -1433,12 +1400,14 @@
                     _activeAnchor = maxSeq == long.MaxValue ? long.MaxValue : maxSeq + 1;
                 }
                 _activeMessages = MergeLatestWindow(_activeMessages, items, FetchSize);
+                ReconcileActiveFromDlq();
             }
             else
             {
                 _activeMessages = items
                     .OrderBy(m => m.EnqueuedTime)
                     .ToList();
+                ReconcileActiveFromDlq();
             }
         }
         catch (Exception ex)
@@ -1494,12 +1463,14 @@
                     _dlqAnchor = maxSeq == long.MaxValue ? long.MaxValue : maxSeq + 1;
                 }
                 _dlqMessages = MergeLatestWindow(_dlqMessages, items, FetchSize);
+                ReconcileActiveFromDlq();
             }
             else
             {
                 _dlqMessages = items
                     .OrderBy(m => m.EnqueuedTime)
                     .ToList();
+                ReconcileActiveFromDlq();
             }
         }
         catch (Exception ex)
@@ -1530,6 +1501,81 @@
             try { await InvokeAsync(StateHasChanged); } catch { }
         }
     }
+
+    private async Task RefreshCountsAsync()
+    {
+        if (!HasConnection || string.IsNullOrEmpty(_selectedTreeValue)) { _activeCount = null; _dlqCount = null; return; }
+        try
+        {
+            if (TryGetQueue(out var q))
+            {
+                var queues = await QueueAdmin.ListQueuesAsync(_connectionString!);
+                var qs = queues?.FirstOrDefault(x => string.Equals(x.Name, q, StringComparison.OrdinalIgnoreCase));
+                _activeCount = qs?.ActiveMessageCount;
+                _dlqCount = qs?.DeadLetterMessageCount;
+            }
+            else if (TryGetSubscription(out var t, out var s))
+            {
+                var subs = await SubscriptionAdmin.ListSubscriptionsAsync(_connectionString!, t);
+                var ss = subs?.FirstOrDefault(x => string.Equals(x.SubscriptionName, s, StringComparison.OrdinalIgnoreCase));
+                _activeCount = ss?.ActiveMessageCount;
+                _dlqCount = ss?.DeadLetterMessageCount;
+            }
+            else
+            {
+                _activeCount = null;
+                _dlqCount = null;
+            }
+
+            // If counts indicate zero, clear corresponding lists to avoid stale rows
+            if ((_activeCount ?? 0) == 0)
+            {
+                _activeMessages.Clear();
+                _activeAnchor = null;
+                _activeHistory.Clear();
+            }
+            if ((_dlqCount ?? 0) == 0)
+            {
+                _dlqMessages.Clear();
+                _dlqAnchor = null;
+                _dlqHistory.Clear();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to refresh counts: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            try { await InvokeAsync(StateHasChanged); } catch { }
+        }
+    }
+
+    private async Task OnActiveRefresh()
+    {
+        if (!CanRefreshMessages) return;
+        if (!_liveActive)
+        {
+            _activeAnchor = null;
+            _activeHistory.Clear();
+        }
+        await RefreshActiveAsync();
+        try { await InvokeAsync(StateHasChanged); } catch { }
+    }
+
+    private async Task OnDlqRefresh()
+    {
+        if (!CanRefreshMessages) return;
+        if (!_liveDlq)
+        {
+            _dlqAnchor = null;
+            _dlqHistory.Clear();
+        }
+        await RefreshDlqAsync();
+        try { await InvokeAsync(StateHasChanged); } catch { }
+    }
+
+    
 
     private async Task ToggleLiveActiveAsync()
     {
@@ -1636,6 +1682,30 @@
         _liveDlqCts = null;
     }
 
+
+    private void StartCountsPolling()
+    {
+        if (string.IsNullOrEmpty(_selectedTreeValue)) return;
+        StopCountsPolling();
+        _countsCts = new CancellationTokenSource();
+        _ = Task.Run(async () =>
+        {
+            var token = _countsCts!.Token;
+            while (!token.IsCancellationRequested)
+            {
+                await RefreshCountsAsync();
+                try { await Task.Delay(CountsRefreshIntervalMs, token); } catch { break; }
+            }
+        });
+    }
+
+    private void StopCountsPolling()
+    {
+        try { _countsCts?.Cancel(); } catch { }
+        try { _countsCts?.Dispose(); } catch { }
+        _countsCts = null;
+    }
+
     // Merge helper: dedupe by sequence, keep most recent by EnqueuedTime, limit to window size
     private static List<MessagePreview> MergeLatestWindow(List<MessagePreview> existing, IReadOnlyList<MessagePreview> incoming, int windowSize)
     {
@@ -1648,10 +1718,22 @@
         foreach (var msg in incoming)
             map[msg.SequenceNumber] = msg;
 
+        // Keep the latest windowSize items by EnqueuedTime, but display ascending in the UI
         return map.Values
-                  .OrderBy(m => m.EnqueuedTime)
+                  .OrderByDescending(m => m.EnqueuedTime)
                   .Take(windowSize)
+                  .OrderBy(m => m.EnqueuedTime)
                   .ToList();
+    }
+
+    private void ReconcileActiveFromDlq()
+    {
+        // Remove from active list any messages that are now present in DLQ
+        if (_activeMessages is null || _activeMessages.Count == 0) return;
+        if (_dlqMessages is null || _dlqMessages.Count == 0) return;
+        var dlqSeq = _dlqMessages.Select(m => m.SequenceNumber).ToHashSet();
+        if (dlqSeq.Count == 0) return;
+        _activeMessages = _activeMessages.Where(m => !dlqSeq.Contains(m.SequenceNumber)).ToList();
     }
 
     private async Task OnActiveRowClick(TableRowClickEventArgs<MessagePreview> args)
@@ -1660,37 +1742,11 @@
         await ShowMessageDetailsAsync(args.Item.SequenceNumber, isDeadLetter: false);
     }
 
-    private async Task OnActiveNextPage()
-    {
-        if (!CanRefreshMessages) return;
-        if (_activeMessages is null || _activeMessages.Count == 0) return;
-        var minSeq = _activeMessages.Min(m => m.SequenceNumber);
-        _activeHistory.Push(_activeAnchor);
-        _activeAnchor = minSeq > FetchSize ? minSeq - FetchSize : 0;
-        await RefreshActiveAsync();
-    }
+    
 
-    private async Task OnActivePrevPage()
-    {
-        if (!CanRefreshMessages) return;
-        if (_activeHistory.Count == 0) return;
-        _activeAnchor = _activeHistory.Pop();
-        await RefreshActiveAsync();
-    }
+    
 
-    private async Task OnActiveGoToEnd()
-    {
-        if (!CanRefreshMessages) return;
-        if (!_liveActive)
-            StartLiveActive();
-        if (_activeMessages is not null && _activeMessages.Count > 0)
-        {
-            var maxSeq = _activeMessages.Max(m => m.SequenceNumber);
-            _activeAnchor = maxSeq == long.MaxValue ? long.MaxValue : maxSeq + 1;
-        }
-        _activeHistory.Clear();
-        await RefreshActiveAsync();
-    }
+    
 
     private async Task OnDlqRowClick(TableRowClickEventArgs<MessagePreview> args)
     {
@@ -1698,37 +1754,11 @@
         await ShowMessageDetailsAsync(args.Item.SequenceNumber, isDeadLetter: true);
     }
 
-    private async Task OnDlqNextPage()
-    {
-        if (!CanRefreshMessages) return;
-        if (_dlqMessages is null || _dlqMessages.Count == 0) return;
-        var minSeq = _dlqMessages.Min(m => m.SequenceNumber);
-        _dlqHistory.Push(_dlqAnchor);
-        _dlqAnchor = minSeq > FetchSize ? minSeq - FetchSize : 0;
-        await RefreshDlqAsync();
-    }
+    
 
-    private async Task OnDlqPrevPage()
-    {
-        if (!CanRefreshMessages) return;
-        if (_dlqHistory.Count == 0) return;
-        _dlqAnchor = _dlqHistory.Pop();
-        await RefreshDlqAsync();
-    }
+    
 
-    private async Task OnDlqGoToEnd()
-    {
-        if (!CanRefreshMessages) return;
-        if (!_liveDlq)
-            StartLiveDlq();
-        if (_dlqMessages is not null && _dlqMessages.Count > 0)
-        {
-            var maxSeq = _dlqMessages.Max(m => m.SequenceNumber);
-            _dlqAnchor = maxSeq == long.MaxValue ? long.MaxValue : maxSeq + 1;
-        }
-        _dlqHistory.Clear();
-        await RefreshDlqAsync();
-    }
+    
 
     private async Task ShowMessageDetailsAsync(long sequenceNumber, bool isDeadLetter)
     {
@@ -1790,5 +1820,6 @@
     {
         StopLiveActive();
         StopLiveDlq();
+        StopCountsPolling();
     }
 }
