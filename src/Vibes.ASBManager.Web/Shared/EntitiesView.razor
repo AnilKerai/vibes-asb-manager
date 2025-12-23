@@ -235,13 +235,10 @@
 
     private IReadOnlyList<QueueSummary>? _queues;
     private IReadOnlyList<TopicSummary>? _topics;
-    private IReadOnlyList<SubscriptionSummary>? _subscriptions;
+
     private Dictionary<string, IReadOnlyList<SubscriptionSummary>> _topicSubscriptions = new();
 
-    private string? _peekedQueue;
-    private IReadOnlyList<MessagePreview>? _peekedMessages;
 
-    private TopicSummary? _selectedTopic;
     private string? _prevConnectionId;
 
     // Subscription rules (filters)
@@ -272,7 +269,7 @@
     private bool _refreshingActive;
     private bool _refreshingDlq;
     private const int FetchSize = 50; // how many messages to fetch per API call
-    private const int UiRowsPerPage = 15; // how many rows the table shows per page
+
     private long? _activeAnchor;
     private long? _dlqAnchor;
     private Stack<long?> _activeHistory = new();
@@ -417,10 +414,10 @@
         _dlqCount = null;
         _queues = null;
         _topics = null;
-        _subscriptions = null;
-        _selectedTopic = null;
-        _peekedQueue = null;
-        _peekedMessages = null;
+
+
+
+
         _selectedTreeValue = null;
         _rules.Clear();
         _queuesExpanded = false;
@@ -481,81 +478,15 @@
         }
     }
 
-    private async Task PeekQueue(string queueName)
-    {
-        if (string.IsNullOrWhiteSpace(_connectionString)) return;
-        try
-        {
-            _peekedQueue = $"Queue: {queueName}";
-            _peekedMessages = await MessageBrowser.PeekQueueAsync(_connectionString, queueName, maxMessages: 50);
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"Failed to peek queue: {ex.Message}", Severity.Error);
-        }
-    }
+    
 
-    private async Task PeekQueueDlq(string queueName)
-    {
-        if (string.IsNullOrWhiteSpace(_connectionString)) return;
-        try
-        {
-            _peekedQueue = $"Queue DLQ: {queueName}";
-            _peekedMessages = await MessageBrowser.PeekQueueDeadLetterAsync(_connectionString, queueName, maxMessages: 50);
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"Failed to peek queue DLQ: {ex.Message}", Severity.Error);
-        }
-    }
+    
 
-    private async Task OnTopicClick(TableRowClickEventArgs<TopicSummary> args)
-    {
-        if (string.IsNullOrWhiteSpace(_connectionString)) return;
-        try
-        {
-            _selectedTopic = args.Item;
-            var topicName = args.Item?.Name;
-            if (string.IsNullOrWhiteSpace(topicName)) return;
-            _subscriptions = await SubscriptionAdmin.ListSubscriptionsAsync(_connectionString, topicName);
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"Failed to load subscriptions: {ex.Message}", Severity.Error);
-        }
-    }
+    
 
-    private async Task PeekSubscription(string subscriptionName)
-    {
-        if (string.IsNullOrWhiteSpace(_connectionString)) return;
-        var topicName = _selectedTopic?.Name;
-        if (string.IsNullOrWhiteSpace(topicName)) return;
-        try
-        {
-            _peekedQueue = $"Subscription: {topicName}/{subscriptionName}";
-            _peekedMessages = await MessageBrowser.PeekSubscriptionAsync(_connectionString, topicName, subscriptionName, maxMessages: 50);
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"Failed to peek subscription: {ex.Message}", Severity.Error);
-        }
-    }
+    
 
-    private async Task PeekSubscriptionDlq(string subscriptionName)
-    {
-        if (string.IsNullOrWhiteSpace(_connectionString)) return;
-        var topicName = _selectedTopic?.Name;
-        if (string.IsNullOrWhiteSpace(topicName)) return;
-        try
-        {
-            _peekedQueue = $"Subscription DLQ: {topicName}/{subscriptionName}";
-            _peekedMessages = await MessageBrowser.PeekSubscriptionDeadLetterAsync(_connectionString, topicName, subscriptionName, maxMessages: 50);
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"Failed to peek subscription DLQ: {ex.Message}", Severity.Error);
-        }
-    }
+    
 
     private async Task OpenSendToQueue(string queueName)
     {
@@ -865,33 +796,9 @@
             await LoadEntities();
     }
 
-    private async Task PeekSelected()
-    {
-        if (!HasConnection) return;
-        if (TryGetQueue(out var q))
-        {
-            await PeekQueue(q);
-        }
-        else if (TryGetSubscription(out var t, out var s))
-        {
-            _selectedTopic = new TopicSummary { Name = t, SubscriptionCount = 0, ScheduledMessageCount = 0 };
-            await PeekSubscription(s);
-        }
-    }
+    
 
-    private async Task PeekDlqSelected()
-    {
-        if (!HasConnection) return;
-        if (TryGetQueue(out var q))
-        {
-            await PeekQueueDlq(q);
-        }
-        else if (TryGetSubscription(out var t, out var s))
-        {
-            _selectedTopic = new TopicSummary { Name = t, SubscriptionCount = 0, ScheduledMessageCount = 0 };
-            await PeekSubscriptionDlq(s);
-        }
-    }
+    
 
     private async Task SendToSelected()
     {
@@ -1807,37 +1714,11 @@
         await ShowMessageDetailsAsync(args.Item.SequenceNumber, isDeadLetter: false);
     }
 
-    private async Task OnActiveNextPage()
-    {
-        if (!CanRefreshMessages) return;
-        if (_activeMessages is null || _activeMessages.Count == 0) return;
-        var minSeq = _activeMessages.Min(m => m.SequenceNumber);
-        _activeHistory.Push(_activeAnchor);
-        _activeAnchor = minSeq > FetchSize ? minSeq - FetchSize : 0;
-        await RefreshActiveAsync();
-    }
+    
 
-    private async Task OnActivePrevPage()
-    {
-        if (!CanRefreshMessages) return;
-        if (_activeHistory.Count == 0) return;
-        _activeAnchor = _activeHistory.Pop();
-        await RefreshActiveAsync();
-    }
+    
 
-    private async Task OnActiveGoToEnd()
-    {
-        if (!CanRefreshMessages) return;
-        if (!_liveActive)
-            StartLiveActive();
-        if (_activeMessages is not null && _activeMessages.Count > 0)
-        {
-            var maxSeq = _activeMessages.Max(m => m.SequenceNumber);
-            _activeAnchor = maxSeq == long.MaxValue ? long.MaxValue : maxSeq + 1;
-        }
-        _activeHistory.Clear();
-        await RefreshActiveAsync();
-    }
+    
 
     private async Task OnDlqRowClick(TableRowClickEventArgs<MessagePreview> args)
     {
@@ -1845,37 +1726,11 @@
         await ShowMessageDetailsAsync(args.Item.SequenceNumber, isDeadLetter: true);
     }
 
-    private async Task OnDlqNextPage()
-    {
-        if (!CanRefreshMessages) return;
-        if (_dlqMessages is null || _dlqMessages.Count == 0) return;
-        var minSeq = _dlqMessages.Min(m => m.SequenceNumber);
-        _dlqHistory.Push(_dlqAnchor);
-        _dlqAnchor = minSeq > FetchSize ? minSeq - FetchSize : 0;
-        await RefreshDlqAsync();
-    }
+    
 
-    private async Task OnDlqPrevPage()
-    {
-        if (!CanRefreshMessages) return;
-        if (_dlqHistory.Count == 0) return;
-        _dlqAnchor = _dlqHistory.Pop();
-        await RefreshDlqAsync();
-    }
+    
 
-    private async Task OnDlqGoToEnd()
-    {
-        if (!CanRefreshMessages) return;
-        if (!_liveDlq)
-            StartLiveDlq();
-        if (_dlqMessages is not null && _dlqMessages.Count > 0)
-        {
-            var maxSeq = _dlqMessages.Max(m => m.SequenceNumber);
-            _dlqAnchor = maxSeq == long.MaxValue ? long.MaxValue : maxSeq + 1;
-        }
-        _dlqHistory.Clear();
-        await RefreshDlqAsync();
-    }
+    
 
     private async Task ShowMessageDetailsAsync(long sequenceNumber, bool isDeadLetter)
     {
