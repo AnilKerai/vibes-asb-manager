@@ -570,50 +570,69 @@
         if (result is { Canceled: false, Data: SendMessageRequest req })
         {
             var count = req.Count < 1 ? 1 : req.Count;
-            var sent = 0;
             var contentType = string.IsNullOrWhiteSpace(req.ContentType) ? null : req.ContentType;
-            try
+            var startVerb = req.ScheduledEnqueueUtc.HasValue ? "Scheduling" : "Sending";
+            Snackbar.Add(count == 1 ? $"{startVerb} 1 message to {queueName}..." : $"{startVerb} {count} messages to {queueName}...", Severity.Info);
+            var cs = _connectionString!;
+            _ = Task.Run(async () =>
             {
-                for (var i = 0; i < count; i++)
+                var sent = 0;
+                Exception? error = null;
+                try
                 {
-                    DateTimeOffset? sched = req.ScheduledEnqueueUtc;
-                    if (sched.HasValue && req.IntervalSeconds > 0)
+                    for (var i = 0; i < count; i++)
                     {
-                        sched = sched.Value.AddSeconds(req.IntervalSeconds * i);
-                    }
-                    await MessageSender.SendToQueueAsync(
-                        
-                        connectionString: _connectionString,
-                        queueName: queueName,
-                        body: req.Body,
-                        subject: req.Subject,
-                        correlationId: req.CorrelationId,
-                        properties: req.Properties,
-                        contentType: contentType,
-                        messageId: null,
-                        scheduledEnqueueTime: sched);
-                    sent++;
-                    if (!req.ScheduledEnqueueUtc.HasValue && req.IntervalSeconds > 0 && i < count - 1)
-                    {
-                        try { await Task.Delay(TimeSpan.FromSeconds(req.IntervalSeconds)); } catch { }
+                        DateTimeOffset? sched = req.ScheduledEnqueueUtc;
+                        if (sched.HasValue && req.IntervalSeconds > 0)
+                        {
+                            sched = sched.Value.AddSeconds(req.IntervalSeconds * i);
+                        }
+                        await MessageSender.SendToQueueAsync(
+                            connectionString: cs,
+                            queueName: queueName,
+                            body: req.Body,
+                            subject: req.Subject,
+                            correlationId: req.CorrelationId,
+                            properties: req.Properties,
+                            contentType: contentType,
+                            messageId: null,
+                            scheduledEnqueueTime: sched);
+                        sent++;
+                        if (!req.ScheduledEnqueueUtc.HasValue && req.IntervalSeconds > 0 && i < count - 1)
+                        {
+                            try { await Task.Delay(TimeSpan.FromSeconds(req.IntervalSeconds)); } catch { }
+                        }
                     }
                 }
-                var verb = req.ScheduledEnqueueUtc.HasValue ? "Scheduled" : "Sent";
-                Snackbar.Add(sent == 1 ? $"{verb} 1 message to {queueName}." : $"{verb} {sent} messages to {queueName}.", Severity.Success);
-                if (CanRefreshMessages)
+                catch (Exception ex)
                 {
-                    await RefreshActiveAsync();
-                    try { await InvokeAsync(StateHasChanged); } catch { }
-                    await RefreshCountsAsync();
+                    error = ex;
                 }
-            }
-            catch (Exception ex)
-            {
-                if (sent > 0)
-                    Snackbar.Add($"Sent {sent} messages before failure: {ex.Message}", Severity.Warning);
-                else
-                    Snackbar.Add($"Failed to send: {ex.Message}", Severity.Error);
-            }
+                finally
+                {
+                    var endVerb = req.ScheduledEnqueueUtc.HasValue ? "Scheduled" : "Sent";
+                    await InvokeAsync(() =>
+                    {
+                        if (error is null)
+                        {
+                            Snackbar.Add(sent == 1 ? $"{endVerb} 1 message to {queueName}." : $"{endVerb} {sent} messages to {queueName}.", Severity.Success);
+                        }
+                        else
+                        {
+                            if (sent > 0)
+                                Snackbar.Add($"Sent {sent} messages before failure: {error.Message}", Severity.Warning);
+                            else
+                                Snackbar.Add($"Failed to send: {error.Message}", Severity.Error);
+                        }
+                    });
+                    if (CanRefreshMessages)
+                    {
+                        await RefreshActiveAsync();
+                        await RefreshCountsAsync();
+                        try { await InvokeAsync(StateHasChanged); } catch { }
+                    }
+                }
+            });
         }
     }
 
@@ -630,49 +649,69 @@
         if (result is { Canceled: false, Data: SendMessageRequest req })
         {
             var count = req.Count < 1 ? 1 : req.Count;
-            var sent = 0;
             var contentType = string.IsNullOrWhiteSpace(req.ContentType) ? null : req.ContentType;
-            try
+            var startVerb = req.ScheduledEnqueueUtc.HasValue ? "Scheduling" : "Sending";
+            Snackbar.Add(count == 1 ? $"{startVerb} 1 message to {topicName}..." : $"{startVerb} {count} messages to {topicName}...", Severity.Info);
+            var cs = _connectionString!;
+            _ = Task.Run(async () =>
             {
-                for (var i = 0; i < count; i++)
+                var sent = 0;
+                Exception? error = null;
+                try
                 {
-                    DateTimeOffset? sched = req.ScheduledEnqueueUtc;
-                    if (sched.HasValue && req.IntervalSeconds > 0)
+                    for (var i = 0; i < count; i++)
                     {
-                        sched = sched.Value.AddSeconds(req.IntervalSeconds * i);
-                    }
-                    await MessageSender.SendToTopicAsync(
-                        connectionString: _connectionString,
-                        topicName: topicName,
-                        body: req.Body,
-                        subject: req.Subject,
-                        correlationId: req.CorrelationId,
-                        properties: req.Properties,
-                        contentType: contentType,
-                        messageId: null,
-                        scheduledEnqueueTime: sched);
-                    sent++;
-                    if (!req.ScheduledEnqueueUtc.HasValue && req.IntervalSeconds > 0 && i < count - 1)
-                    {
-                        try { await Task.Delay(TimeSpan.FromSeconds(req.IntervalSeconds)); } catch { }
+                        DateTimeOffset? sched = req.ScheduledEnqueueUtc;
+                        if (sched.HasValue && req.IntervalSeconds > 0)
+                        {
+                            sched = sched.Value.AddSeconds(req.IntervalSeconds * i);
+                        }
+                        await MessageSender.SendToTopicAsync(
+                            connectionString: cs,
+                            topicName: topicName,
+                            body: req.Body,
+                            subject: req.Subject,
+                            correlationId: req.CorrelationId,
+                            properties: req.Properties,
+                            contentType: contentType,
+                            messageId: null,
+                            scheduledEnqueueTime: sched);
+                        sent++;
+                        if (!req.ScheduledEnqueueUtc.HasValue && req.IntervalSeconds > 0 && i < count - 1)
+                        {
+                            try { await Task.Delay(TimeSpan.FromSeconds(req.IntervalSeconds)); } catch { }
+                        }
                     }
                 }
-                var verb = req.ScheduledEnqueueUtc.HasValue ? "Scheduled" : "Sent";
-                Snackbar.Add(sent == 1 ? $"{verb} 1 message to {topicName}." : $"{verb} {sent} messages to {topicName}.", Severity.Success);
-                if (CanRefreshMessages)
+                catch (Exception ex)
                 {
-                    await RefreshActiveAsync();
-                    try { await InvokeAsync(StateHasChanged); } catch { }
-                    await RefreshCountsAsync();
+                    error = ex;
                 }
-            }
-            catch (Exception ex)
-            {
-                if (sent > 0)
-                    Snackbar.Add($"Sent {sent} messages before failure: {ex.Message}", Severity.Warning);
-                else
-                    Snackbar.Add($"Failed to send: {ex.Message}", Severity.Error);
-            }
+                finally
+                {
+                    var endVerb = req.ScheduledEnqueueUtc.HasValue ? "Scheduled" : "Sent";
+                    await InvokeAsync(() =>
+                    {
+                        if (error is null)
+                        {
+                            Snackbar.Add(sent == 1 ? $"{endVerb} 1 message to {topicName}." : $"{endVerb} {sent} messages to {topicName}.", Severity.Success);
+                        }
+                        else
+                        {
+                            if (sent > 0)
+                                Snackbar.Add($"Sent {sent} messages before failure: {error.Message}", Severity.Warning);
+                            else
+                                Snackbar.Add($"Failed to send: {error.Message}", Severity.Error);
+                        }
+                    });
+                    if (CanRefreshMessages)
+                    {
+                        await RefreshActiveAsync();
+                        await RefreshCountsAsync();
+                        try { await InvokeAsync(StateHasChanged); } catch { }
+                    }
+                }
+            });
         }
     }
 
