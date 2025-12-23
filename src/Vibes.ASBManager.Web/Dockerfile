@@ -7,10 +7,16 @@ WORKDIR /src
 # Copy entire repo (use .dockerignore to keep it lean)
 COPY . .
 
+# CI-provided versioning (no MinVer inside the container)
+ARG VERSION=0.0.0-dev
+ARG INFORMATIONAL_VERSION=${VERSION}
+
 # Restore and publish the Web project
-RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
 RUN dotnet restore Vibes.ASBManager.sln
-RUN dotnet publish src/Vibes.ASBManager.Web -c Release -o /app/publish
+RUN dotnet publish src/Vibes.ASBManager.Web -c Release -o /app/publish -nologo \
+    -p:Version=$VERSION \
+    -p:InformationalVersion=$INFORMATIONAL_VERSION \
+    -p:IncludeSourceRevisionInInformationalVersion=false
 
 # Runtime stage
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS final
