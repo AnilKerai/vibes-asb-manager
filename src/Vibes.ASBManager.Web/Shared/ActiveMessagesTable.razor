@@ -1,6 +1,6 @@
 <MudPaper Class="pa-3 mt-3" Elevation="1">
     <div class="d-flex align-center mb-2" style="gap:8px;">
-        <MudText Typo="Typo.h6">Active Messages</MudText>
+        <MudText Typo="Typo.h6">Active Messages @((Count.HasValue ? $"({Count.Value})" : string.Empty))</MudText>
         <MudSpacer />
         <MudButton Variant="Variant.Outlined" Disabled="@(!CanRefresh)" OnClick="@OnRefresh">
             <MudIcon Icon="@Icons.Material.Filled.Refresh" />
@@ -32,5 +32,7 @@
     [Parameter] public IReadOnlyList<MessagePreview>? Items { get; set; }
     [Parameter] public bool CanRefresh { get; set; }
     [Parameter] public EventCallback OnRefresh { get; set; }
+
     [Parameter] public EventCallback<TableRowClickEventArgs<MessagePreview>> OnRowClick { get; set; }
+    [Parameter] public long? Count { get; set; }
 }

@@ -209,13 +209,17 @@
             <ActiveMessagesTable
                 Items="_activeMessages"
                 CanRefresh="@CanRefreshMessages"
-                OnRefresh="@RefreshActiveAsync"
+                OnRefresh="@OnActiveRefresh"
+
+                Count="@_activeCount"
                 OnRowClick="@OnActiveRowClick" />
 
             <DlqMessagesTable
                 Items="_dlqMessages"
                 CanRefresh="@CanRefreshMessages"
-                OnRefresh="@RefreshDlqAsync"
+                OnRefresh="@OnDlqRefresh"
+
+                Count="@_dlqCount"
                 OnRowClick="@OnDlqRowClick" />
         </MudItem>
     </MudGrid>
@@ -279,6 +283,10 @@
     private CancellationTokenSource? _liveDlqCts;
     private bool _pendingActiveClear;
     private bool _pendingDlqClear;
+    private long? _activeCount;
+    private long? _dlqCount;
+    private CancellationTokenSource? _countsCts;
+    private const int CountsRefreshIntervalMs = 2000;
 
     // Create subscription state
     private bool _creatingSubscription;
@@ -356,6 +364,7 @@
             _activeHistory.Clear();
             try { await InvokeAsync(StateHasChanged); } catch { }
             await RefreshActiveIfNeededAsync();
+            await RefreshCountsAsync();
         }
         catch (Exception ex)
         {
@@ -384,6 +393,7 @@
             _dlqHistory.Clear();
             try { await InvokeAsync(StateHasChanged); } catch { }
             await RefreshDlqIfNeededAsync();
+            await RefreshCountsAsync();
         }
         catch (Exception ex)
         {
@@ -396,12 +406,15 @@
         _connectionString = Connection?.ConnectionString;
         StopLiveActive();
         StopLiveDlq();
+        StopCountsPolling();
         _activeMessages.Clear();
         _dlqMessages.Clear();
         _activeAnchor = null;
         _dlqAnchor = null;
         _activeHistory.Clear();
         _dlqHistory.Clear();
+        _activeCount = null;
+        _dlqCount = null;
         _queues = null;
         _topics = null;
         _subscriptions = null;
@@ -591,6 +604,7 @@
                 {
                     await RefreshActiveAsync();
                     try { await InvokeAsync(StateHasChanged); } catch { }
+                    await RefreshCountsAsync();
                 }
             }
             catch (Exception ex)
@@ -649,6 +663,7 @@
                 {
                     await RefreshActiveAsync();
                     try { await InvokeAsync(StateHasChanged); } catch { }
+                    await RefreshCountsAsync();
                 }
             }
             catch (Exception ex)
@@ -682,6 +697,7 @@
             _activeHistory.Clear();
             try { await InvokeAsync(StateHasChanged); } catch { }
             await RefreshActiveIfNeededAsync();
+            await RefreshCountsAsync();
         }
         catch (Exception ex)
         {
@@ -710,6 +726,7 @@
             _dlqHistory.Clear();
             try { await InvokeAsync(StateHasChanged); } catch { }
             await RefreshDlqIfNeededAsync();
+            await RefreshCountsAsync();
         }
         catch (Exception ex)
         {
@@ -733,6 +750,7 @@
             Snackbar.Add($"Replayed {replayed} DLQ messages for {queueName}.", Severity.Success);
             await RefreshActiveIfNeededAsync();
             await RefreshDlqIfNeededAsync();
+            await RefreshCountsAsync();
         }
         catch (Exception ex)
         {
@@ -906,6 +924,7 @@
         // stop live polling and clear lists on entity switch
         StopLiveActive();
         StopLiveDlq();
+        StopCountsPolling();
         _activeMessages.Clear();
         _dlqMessages.Clear();
         // Reset anchors and paging history for new selection
@@ -915,6 +934,8 @@
         _dlqHistory.Clear();
         await LoadSettingsForSelection();
         await LoadRulesForSelection();
+        await RefreshCountsAsync();
+        StartCountsPolling();
         // auto-load message lists for the new selection
         await RefreshActiveAsync();
         await RefreshDlqAsync();
@@ -1531,6 +1552,67 @@
         }
     }
 
+    private async Task RefreshCountsAsync()
+    {
+        if (!HasConnection || string.IsNullOrEmpty(_selectedTreeValue)) { _activeCount = null; _dlqCount = null; return; }
+        try
+        {
+            if (TryGetQueue(out var q))
+            {
+                var queues = await QueueAdmin.ListQueuesAsync(_connectionString!);
+                var qs = queues?.FirstOrDefault(x => string.Equals(x.Name, q, StringComparison.OrdinalIgnoreCase));
+                _activeCount = qs?.ActiveMessageCount;
+                _dlqCount = qs?.DeadLetterMessageCount;
+            }
+            else if (TryGetSubscription(out var t, out var s))
+            {
+                var subs = await SubscriptionAdmin.ListSubscriptionsAsync(_connectionString!, t);
+                var ss = subs?.FirstOrDefault(x => string.Equals(x.SubscriptionName, s, StringComparison.OrdinalIgnoreCase));
+                _activeCount = ss?.ActiveMessageCount;
+                _dlqCount = ss?.DeadLetterMessageCount;
+            }
+            else
+            {
+                _activeCount = null;
+                _dlqCount = null;
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to refresh counts: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            try { await InvokeAsync(StateHasChanged); } catch { }
+        }
+    }
+
+    private async Task OnActiveRefresh()
+    {
+        if (!CanRefreshMessages) return;
+        if (!_liveActive)
+        {
+            _activeAnchor = null;
+            _activeHistory.Clear();
+        }
+        await RefreshActiveAsync();
+        try { await InvokeAsync(StateHasChanged); } catch { }
+    }
+
+    private async Task OnDlqRefresh()
+    {
+        if (!CanRefreshMessages) return;
+        if (!_liveDlq)
+        {
+            _dlqAnchor = null;
+            _dlqHistory.Clear();
+        }
+        await RefreshDlqAsync();
+        try { await InvokeAsync(StateHasChanged); } catch { }
+    }
+
+    
+
     private async Task ToggleLiveActiveAsync()
     {
         if (!_liveActive)
@@ -1636,6 +1718,30 @@
         _liveDlqCts = null;
     }
 
+
+    private void StartCountsPolling()
+    {
+        if (string.IsNullOrEmpty(_selectedTreeValue)) return;
+        StopCountsPolling();
+        _countsCts = new CancellationTokenSource();
+        _ = Task.Run(async () =>
+        {
+            var token = _countsCts!.Token;
+            while (!token.IsCancellationRequested)
+            {
+                await RefreshCountsAsync();
+                try { await Task.Delay(CountsRefreshIntervalMs, token); } catch { break; }
+            }
+        });
+    }
+
+    private void StopCountsPolling()
+    {
+        try { _countsCts?.Cancel(); } catch { }
+        try { _countsCts?.Dispose(); } catch { }
+        _countsCts = null;
+    }
+
     // Merge helper: dedupe by sequence, keep most recent by EnqueuedTime, limit to window size
     private static List<MessagePreview> MergeLatestWindow(List<MessagePreview> existing, IReadOnlyList<MessagePreview> incoming, int windowSize)
     {
@@ -1648,9 +1754,11 @@
         foreach (var msg in incoming)
             map[msg.SequenceNumber] = msg;
 
+        // Keep the latest windowSize items by EnqueuedTime, but display ascending in the UI
         return map.Values
-                  .OrderBy(m => m.EnqueuedTime)
+                  .OrderByDescending(m => m.EnqueuedTime)
                   .Take(windowSize)
+                  .OrderBy(m => m.EnqueuedTime)
                   .ToList();
     }
 
@@ -1790,5 +1898,6 @@
     {
         StopLiveActive();
         StopLiveDlq();
+        StopCountsPolling();
     }
 }
