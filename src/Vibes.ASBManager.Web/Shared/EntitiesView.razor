@@ -1400,12 +1400,14 @@
                     _activeAnchor = maxSeq == long.MaxValue ? long.MaxValue : maxSeq + 1;
                 }
                 _activeMessages = MergeLatestWindow(_activeMessages, items, FetchSize);
+                ReconcileActiveFromDlq();
             }
             else
             {
                 _activeMessages = items
                     .OrderBy(m => m.EnqueuedTime)
                     .ToList();
+                ReconcileActiveFromDlq();
             }
         }
         catch (Exception ex)
@@ -1461,12 +1463,14 @@
                     _dlqAnchor = maxSeq == long.MaxValue ? long.MaxValue : maxSeq + 1;
                 }
                 _dlqMessages = MergeLatestWindow(_dlqMessages, items, FetchSize);
+                ReconcileActiveFromDlq();
             }
             else
             {
                 _dlqMessages = items
                     .OrderBy(m => m.EnqueuedTime)
                     .ToList();
+                ReconcileActiveFromDlq();
             }
         }
         catch (Exception ex)
@@ -1521,6 +1525,20 @@
             {
                 _activeCount = null;
                 _dlqCount = null;
+            }
+
+            // If counts indicate zero, clear corresponding lists to avoid stale rows
+            if ((_activeCount ?? 0) == 0)
+            {
+                _activeMessages.Clear();
+                _activeAnchor = null;
+                _activeHistory.Clear();
+            }
+            if ((_dlqCount ?? 0) == 0)
+            {
+                _dlqMessages.Clear();
+                _dlqAnchor = null;
+                _dlqHistory.Clear();
             }
         }
         catch (Exception ex)
@@ -1706,6 +1724,16 @@
                   .Take(windowSize)
                   .OrderBy(m => m.EnqueuedTime)
                   .ToList();
+    }
+
+    private void ReconcileActiveFromDlq()
+    {
+        // Remove from active list any messages that are now present in DLQ
+        if (_activeMessages is null || _activeMessages.Count == 0) return;
+        if (_dlqMessages is null || _dlqMessages.Count == 0) return;
+        var dlqSeq = _dlqMessages.Select(m => m.SequenceNumber).ToHashSet();
+        if (dlqSeq.Count == 0) return;
+        _activeMessages = _activeMessages.Where(m => !dlqSeq.Contains(m.SequenceNumber)).ToList();
     }
 
     private async Task OnActiveRowClick(TableRowClickEventArgs<MessagePreview> args)
