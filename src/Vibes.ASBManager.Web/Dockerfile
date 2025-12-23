@@ -8,6 +8,7 @@ WORKDIR /src
 COPY . .
 
 # Restore and publish the Web project
+RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
 RUN dotnet restore Vibes.ASBManager.sln
 RUN dotnet publish src/Vibes.ASBManager.Web -c Release -o /app/publish
 
