@@ -6,6 +6,8 @@
     <Nullable>enable</Nullable>
     <RootNamespace>Vibes.ASBManager.Web</RootNamespace>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <Version>0.0.0</Version>
+    <InformationalVersion>0.0.0-dev</InformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -24,5 +26,5 @@
     <ProjectReference Include="..\Vibes.ASBManager.Infrastructure.Storage.File\Vibes.ASBManager.Infrastructure.Storage.File.csproj" />
     <ProjectReference Include="..\Vibes.ASBManager.Infrastructure.AzureServiceBus\Vibes.ASBManager.Infrastructure.AzureServiceBus.csproj" />
   </ItemGroup>
-    
+
 </Project>
