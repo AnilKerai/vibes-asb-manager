@@ -55,6 +55,7 @@
                 CanSend="@CanSend"
                 CanPurgeActive="@CanPurgeActive"
                 CanPurgeDlq="@CanPurgeDlq"
+                CanResubmitDlq="@CanResubmitDlq"
                 CanRefreshMessages="@CanRefreshMessages"
                 CanCreateSubscriptionAction="@CanCreateSubscriptionAction"
                 CanDeleteSubscriptionAction="@CanDeleteSubscriptionAction"
@@ -69,6 +70,7 @@
                 OnSend="@SendToSelected"
                 OnPurgeActive="@PurgeActiveSelected"
                 OnPurgeDlq="@PurgeDlqSelected"
+                OnResubmitDlq="@ResubmitDlqSelected"
                 OnCreateQueue="@CreateQueueAsync"
                 OnCreateTopic="@CreateTopicAsync"
                 OnCreateSubscription="@CreateSubscriptionAsync"
@@ -728,6 +730,54 @@
         }
     }
 
+    private async Task ConfirmReplayQueueDlqAll(string queueName)
+    {
+        if (string.IsNullOrWhiteSpace(_connectionString)) return;
+        var confirm = await DialogService.ShowMessageBox(
+            title: "Resubmit all DLQ messages",
+            markupMessage: (MarkupString)$"This will resend <b>all</b> messages from the DLQ of '<b>{queueName}</b>' back to the active queue and remove them from the DLQ. Continue?",
+            yesText: "Resubmit",
+            cancelText: "Cancel",
+            options: new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small });
+        if (confirm != true) return;
+        try
+        {
+            var replayed = await DeadLetterMaintenance.ReplayQueueDeadLettersAsync(_connectionString, queueName, maxMessages: int.MaxValue);
+            Snackbar.Add($"Resubmitted {replayed} DLQ messages for {queueName}.", Severity.Success);
+            await RefreshActiveIfNeededAsync();
+            await RefreshDlqIfNeededAsync();
+            await RefreshCountsAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to resubmit DLQ: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task ConfirmReplaySubscriptionDlqAll(string topicName, string subscriptionName)
+    {
+        if (string.IsNullOrWhiteSpace(_connectionString)) return;
+        var confirm = await DialogService.ShowMessageBox(
+            title: "Resubmit all DLQ messages",
+            markupMessage: (MarkupString)$"This will resend <b>all</b> messages from the DLQ of '<b>{topicName}/{subscriptionName}</b>' back to the topic and remove them from the DLQ. Continue?",
+            yesText: "Resubmit",
+            cancelText: "Cancel",
+            options: new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small });
+        if (confirm != true) return;
+        try
+        {
+            var replayed = await DeadLetterMaintenance.ReplaySubscriptionDeadLettersAsync(_connectionString, topicName, subscriptionName, maxMessages: int.MaxValue);
+            Snackbar.Add($"Resubmitted {replayed} DLQ messages for {topicName}/{subscriptionName}.", Severity.Success);
+            await RefreshActiveIfNeededAsync();
+            await RefreshDlqIfNeededAsync();
+            await RefreshCountsAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to resubmit DLQ: {ex.Message}", Severity.Error);
+        }
+    }
+
     // Selection helpers and action bar commands
     private bool HasConnection => !string.IsNullOrWhiteSpace(_connectionString);
     private bool SelectedIsQueue => _selectedTreeValue?.StartsWith("queue:", StringComparison.OrdinalIgnoreCase) == true;
@@ -742,6 +792,7 @@
     private bool CanSend => HasConnection && (SelectedIsQueue || SelectedIsTopic);
     private bool CanPurgeActive => HasConnection && (SelectedIsQueue || SelectedIsSubscription);
     private bool CanPurgeDlq => HasConnection && (SelectedIsQueue || SelectedIsSubscription);
+    private bool CanResubmitDlq => HasConnection && (SelectedIsQueue || SelectedIsSubscription) && (_dlqCount ?? 0) > 0;
     private bool CanCreateSubscriptionAction => HasConnection && SelectedIsTopic && !_creatingSubscription;
     private bool CanDeleteSubscriptionAction => HasConnection && SelectedIsSubscription;
     private bool CanCreateQueueAction => HasConnection;
@@ -836,6 +887,19 @@
         else if (TryGetSubscription(out var t, out var s))
         {
             await ConfirmPurgeSubscriptionDlq(t, s);
+        }
+    }
+
+    private async Task ResubmitDlqSelected()
+    {
+        if (!HasConnection) return;
+        if (TryGetQueue(out var q))
+        {
+            await ConfirmReplayQueueDlqAll(q);
+        }
+        else if (TryGetSubscription(out var t, out var s))
+        {
+            await ConfirmReplaySubscriptionDlqAll(t, s);
         }
     }
 

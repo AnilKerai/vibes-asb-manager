@@ -18,6 +18,10 @@
         <MudIcon Icon="@Icons.Material.Filled.DeleteSweep" />
         <span class="ms-1">Purge Active</span>
     </MudButton>
+    <MudButton Variant="Variant.Outlined" Color="Color.Error" Disabled="@(!CanResubmitDlq)" OnClick="@OnResubmitDlq">
+        <MudIcon Icon="@Icons.Material.Filled.Replay" />
+        <span class="ms-1">Resubmit DLQ</span>
+    </MudButton>
     <MudButton Variant="Variant.Outlined" Color="Color.Error" Disabled="@(!CanPurgeDlq)" OnClick="@OnPurgeDlq">
         <MudIcon Icon="@Icons.Material.Filled.DeleteForever" />
         <span class="ms-1">Purge DLQ</span>
@@ -91,6 +95,7 @@
     [Parameter] public bool CanSend { get; set; }
     [Parameter] public bool CanPurgeActive { get; set; }
     [Parameter] public bool CanPurgeDlq { get; set; }
+    [Parameter] public bool CanResubmitDlq { get; set; }
     [Parameter] public bool CanRefreshMessages { get; set; }
     [Parameter] public bool CanCreateSubscriptionAction { get; set; }
     [Parameter] public bool CanDeleteSubscriptionAction { get; set; }
@@ -108,6 +113,7 @@
     [Parameter] public EventCallback OnSend { get; set; }
     [Parameter] public EventCallback OnPurgeActive { get; set; }
     [Parameter] public EventCallback OnPurgeDlq { get; set; }
+    [Parameter] public EventCallback OnResubmitDlq { get; set; }
     [Parameter] public EventCallback OnCreateQueue { get; set; }
     [Parameter] public EventCallback OnCreateTopic { get; set; }
     [Parameter] public EventCallback OnCreateSubscription { get; set; }
