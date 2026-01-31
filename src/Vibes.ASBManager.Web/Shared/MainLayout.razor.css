@@ -43,3 +43,20 @@
   overflow-y: auto;
   padding-bottom: 8px;
 }
+
+::deep .app-drawer .connection-link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+::deep .app-drawer .connection-link:hover {
+  background-color: rgba(0, 0, 0, 0.04);
+}
+
+::deep .app-drawer .connection-link.connection-link-active {
+  background-color: rgba(47, 164, 231, 0.12);
+  color: var(--mud-palette-primary);
+}

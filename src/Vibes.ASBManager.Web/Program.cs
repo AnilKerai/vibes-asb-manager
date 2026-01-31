@@ -30,9 +30,9 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 
-app.UseStaticFiles();
 app.UseRouting();
 
+app.MapStaticAssets();
 app.MapBlazorHub();
 app.MapFallbackToPage("/_Host");
 

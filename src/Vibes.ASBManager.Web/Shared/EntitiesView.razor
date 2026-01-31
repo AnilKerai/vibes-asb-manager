@@ -1426,48 +1426,56 @@
         try
         {
             _refreshingDlq = true;
-            IReadOnlyList<MessagePreview> items = Array.Empty<MessagePreview>();
-            if (TryGetQueue(out var q))
-            {
-                items = await MessageBrowser.PeekQueueDeadLetterAsync(_connectionString!, q, maxMessages: FetchSize, fromSequenceNumber: _dlqAnchor);
-            }
-            else if (TryGetSubscription(out var t, out var s))
-            {
-                items = await MessageBrowser.PeekSubscriptionDeadLetterAsync(_connectionString!, t, s, maxMessages: FetchSize, fromSequenceNumber: _dlqAnchor);
-            }
-            // If not in live mode and our anchor points past the end (yielding no items), reset to null and refetch once
-            if (!_liveDlq && _dlqAnchor.HasValue && (items is null || items.Count == 0))
-            {
-                _dlqAnchor = null;
-                if (TryGetQueue(out var q2))
-                {
-                    items = await MessageBrowser.PeekQueueDeadLetterAsync(_connectionString!, q2, maxMessages: FetchSize, fromSequenceNumber: _dlqAnchor);
-                }
-                else if (TryGetSubscription(out var t2, out var s2))
-                {
-                    items = await MessageBrowser.PeekSubscriptionDeadLetterAsync(_connectionString!, t2, s2, maxMessages: FetchSize, fromSequenceNumber: _dlqAnchor);
-                }
-            }
-            if (_liveDlq && _pendingDlqClear)
-            {
-                _dlqMessages.Clear();
-                _dlqHistory.Clear();
-                _dlqAnchor = null;
-                _pendingDlqClear = false;
-            }
             if (_liveDlq)
             {
-                if (items.Count > 0)
+                IReadOnlyList<MessagePreview> liveItems = Array.Empty<MessagePreview>();
+                if (TryGetQueue(out var q))
                 {
-                    var maxSeq = items.Max(m => m.SequenceNumber);
+                    liveItems = await MessageBrowser.PeekQueueDeadLetterAsync(_connectionString!, q, maxMessages: FetchSize, fromSequenceNumber: _dlqAnchor);
+                }
+                else if (TryGetSubscription(out var t, out var s))
+                {
+                    liveItems = await MessageBrowser.PeekSubscriptionDeadLetterAsync(_connectionString!, t, s, maxMessages: FetchSize, fromSequenceNumber: _dlqAnchor);
+                }
+                if (_pendingDlqClear)
+                {
+                    _dlqMessages.Clear();
+                    _dlqHistory.Clear();
+                    _dlqAnchor = null;
+                    _pendingDlqClear = false;
+                }
+                if (liveItems.Count > 0)
+                {
+                    var maxSeq = liveItems.Max(m => m.SequenceNumber);
                     _dlqAnchor = maxSeq == long.MaxValue ? long.MaxValue : maxSeq + 1;
                 }
-                _dlqMessages = MergeLatestWindow(_dlqMessages, items, FetchSize);
+                _dlqMessages = MergeLatestWindow(_dlqMessages, liveItems, FetchSize);
                 ReconcileActiveFromDlq();
             }
             else
             {
-                _dlqMessages = items
+                var collected = new List<MessagePreview>();
+                long? anchor = _dlqAnchor;
+                var target = _dlqCount.HasValue ? (int)Math.Min(_dlqCount.Value, FetchSize * 10) : FetchSize;
+                while (collected.Count < target)
+                {
+                    IReadOnlyList<MessagePreview> page = Array.Empty<MessagePreview>();
+                    if (TryGetQueue(out var q))
+                    {
+                        page = await MessageBrowser.PeekQueueDeadLetterAsync(_connectionString!, q, maxMessages: FetchSize, fromSequenceNumber: anchor);
+                    }
+                    else if (TryGetSubscription(out var t, out var s))
+                    {
+                        page = await MessageBrowser.PeekSubscriptionDeadLetterAsync(_connectionString!, t, s, maxMessages: FetchSize, fromSequenceNumber: anchor);
+                    }
+                    if (page is null || page.Count == 0) break;
+                    collected.AddRange(page);
+                    var maxSeq = page.Max(m => m.SequenceNumber);
+                    anchor = maxSeq == long.MaxValue ? long.MaxValue : maxSeq + 1;
+                    if (page.Count < FetchSize) break;
+                }
+                _dlqAnchor = anchor;
+                _dlqMessages = collected
                     .OrderBy(m => m.EnqueuedTime)
                     .ToList();
                 ReconcileActiveFromDlq();
@@ -1559,6 +1567,7 @@
             _activeAnchor = null;
             _activeHistory.Clear();
         }
+        await RefreshCountsAsync();
         await RefreshActiveAsync();
         try { await InvokeAsync(StateHasChanged); } catch { }
     }
@@ -1571,6 +1580,7 @@
             _dlqAnchor = null;
             _dlqHistory.Clear();
         }
+        await RefreshCountsAsync();
         await RefreshDlqAsync();
         try { await InvokeAsync(StateHasChanged); } catch { }
     }

@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # Build stage
-FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
 # Copy entire repo (use .dockerignore to keep it lean)
@@ -19,7 +19,7 @@ RUN dotnet publish src/Vibes.ASBManager.Web -c Release -o /app/publish -nologo \
     -p:IncludeSourceRevisionInInformationalVersion=false
 
 # Runtime stage
-FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS final
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app
 
 # Copy published output
