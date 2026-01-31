@@ -218,6 +218,44 @@ public sealed class AzureServiceBusMessaging : IMessageBrowser, IMessageSender, 
         return replayedCount;
     }
 
+    public async Task<int> ReplaySubscriptionDeadLettersAsync(string connectionString, string topicName, string subscriptionName, int maxMessages = 50, CancellationToken cancellationToken = default)
+    {
+        await using var client = new ServiceBusClient(connectionString);
+        await using var deadLetterReceiver = client.CreateReceiver(topicName, subscriptionName, new ServiceBusReceiverOptions { SubQueue = SubQueue.DeadLetter });
+        var sender = client.CreateSender(topicName);
+
+        var replayedCount = 0;
+        while (replayedCount < maxMessages && !cancellationToken.IsCancellationRequested)
+        {
+            var batchSize = Math.Min(50, maxMessages - replayedCount);
+            var deadLetterMessages = await deadLetterReceiver.ReceiveMessagesAsync(batchSize, TimeSpan.FromSeconds(2), cancellationToken).ConfigureAwait(false);
+            if (deadLetterMessages.Count == 0) break;
+
+            foreach (var deadLetterMessage in deadLetterMessages)
+            {
+                var replayMessage = new ServiceBusMessage(deadLetterMessage.Body)
+                {
+                    Subject = deadLetterMessage.Subject,
+                    CorrelationId = deadLetterMessage.CorrelationId,
+                    MessageId = deadLetterMessage.MessageId,
+                    ContentType = deadLetterMessage.ContentType
+                };
+                foreach (var property in deadLetterMessage.ApplicationProperties)
+                {
+                    replayMessage.ApplicationProperties[property.Key] = property.Value;
+                }
+
+                await sender.SendMessageAsync(replayMessage, cancellationToken).ConfigureAwait(false);
+                await deadLetterReceiver.CompleteMessageAsync(deadLetterMessage, cancellationToken).ConfigureAwait(false);
+                replayedCount++;
+                if (replayedCount >= maxMessages) break;
+            }
+        }
+
+        await sender.DisposeAsync();
+        return replayedCount;
+    }
+
     public async Task<MessageDetails?> PeekQueueMessageAsync(string connectionString, string queueName, long sequenceNumber, CancellationToken cancellationToken = default)
     {
         await using var client = new ServiceBusClient(connectionString);
