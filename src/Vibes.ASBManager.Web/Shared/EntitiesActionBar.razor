@@ -14,15 +14,15 @@
         <MudIcon Icon="@Icons.Material.Filled.Send" />
         <span class="ms-1">Send Message(s)</span>
     </MudButton>
-    <MudButton Variant="Variant.Outlined" Color="Color.Error" Disabled="@ResubmitDlqDisabled" OnClick="@OnResubmitDlq">
+    <MudButton Variant="Variant.Outlined" Disabled="@ResubmitDlqDisabled" OnClick="@OnResubmitDlq">
         <MudIcon Icon="@Icons.Material.Filled.Replay" />
         <span class="ms-1">Resubmit DLQ</span>
     </MudButton>
-    <MudButton Variant="Variant.Outlined" Color="Color.Error" Disabled="@PurgeActiveDisabled" OnClick="@OnPurgeActive">
+    <MudButton Variant="Variant.Outlined" Color="Color.Warning" Disabled="@PurgeActiveDisabled" OnClick="@OnPurgeActive">
         <MudIcon Icon="@Icons.Material.Filled.DeleteSweep" />
         <span class="ms-1">Purge Active</span>
     </MudButton>
-    <MudButton Variant="Variant.Outlined" Color="Color.Error" Disabled="@PurgeDlqDisabled" OnClick="@OnPurgeDlq">
+    <MudButton Variant="Variant.Outlined" Color="Color.Warning" Disabled="@PurgeDlqDisabled" OnClick="@OnPurgeDlq">
         <MudIcon Icon="@Icons.Material.Filled.DeleteForever" />
         <span class="ms-1">Purge DLQ</span>
     </MudButton>

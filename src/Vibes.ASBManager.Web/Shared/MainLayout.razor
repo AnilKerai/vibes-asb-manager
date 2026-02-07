@@ -445,7 +445,7 @@
 
         // Find and wrap all case-insensitive occurrences of term with <mark>
         var sb = new System.Text.StringBuilder();
-        int i = 0;
+        var i = 0;
         while (i < name.Length)
         {
             var idx = name.IndexOf(term, i, StringComparison.OrdinalIgnoreCase);
@@ -536,7 +536,7 @@
             var cs = req.ConnectionString?.Trim() ?? string.Empty;
             if (!string.IsNullOrWhiteSpace(cs))
             {
-                var nameCandidate = string.IsNullOrWhiteSpace(req.Name) ? GetNameFromConnectionString(cs) : req.Name.Trim();
+                var nameCandidate = string.IsNullOrWhiteSpace(req.Name) ? ConnectionStringParser.GetName(cs) : req.Name.Trim();
                 if (string.IsNullOrWhiteSpace(nameCandidate))
                     nameCandidate = "connection";
 
@@ -549,47 +549,6 @@
                 await ConnectionStore.SaveAsync(info);
                 await LoadConnectionsAsync();
             }
-        }
-    }
-
-    private static string? GetEndpointFromConnectionString(string cs)
-    {
-        if (string.IsNullOrWhiteSpace(cs)) return null;
-        try
-        {
-            var part = cs.Split(';', StringSplitOptions.RemoveEmptyEntries)
-                .FirstOrDefault(p => p.TrimStart().StartsWith("Endpoint=", StringComparison.OrdinalIgnoreCase));
-            if (part is null) return null;
-            var idx = part.IndexOf('=');
-            if (idx < 0 || idx + 1 >= part.Length) return null;
-            var value = part[(idx + 1)..].Trim();
-            return value;
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    private static string? GetNameFromConnectionString(string cs)
-    {
-        var endpoint = GetEndpointFromConnectionString(cs);
-        if (string.IsNullOrWhiteSpace(endpoint)) return null;
-        try
-        {
-            var uri = new Uri(endpoint);
-            var host = uri.Host; // e.g. myns.servicebus.windows.net
-            if (string.IsNullOrWhiteSpace(host)) return null;
-            var first = host.Split('.').FirstOrDefault();
-            return string.IsNullOrWhiteSpace(first) ? host : first;
-        }
-        catch
-        {
-            // Fallback parsing
-            var trimmed = endpoint.Replace("sb://", string.Empty, StringComparison.OrdinalIgnoreCase);
-            var hostPart = trimmed.Split('/')[0];
-            var first = hostPart.Split('.').FirstOrDefault();
-            return string.IsNullOrWhiteSpace(first) ? hostPart : first;
         }
     }
 

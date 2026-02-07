@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using Azure.Messaging.ServiceBus;
 using Vibes.ASBManager.Application.Interfaces.Messaging;
@@ -6,11 +7,16 @@ using Vibes.ASBManager.Application.Models;
 namespace Vibes.ASBManager.Infrastructure.AzureServiceBus.ServiceBus;
 
 [ExcludeFromCodeCoverage]
-public sealed class AzureServiceBusMessaging : IMessageBrowser, IMessageSender, IMessageMaintenance, IDeadLetterMaintenance
+public sealed class AzureServiceBusMessaging : IMessageBrowser, IMessageSender, IMessageMaintenance, IDeadLetterMaintenance, IAsyncDisposable
 {
+    private readonly ConcurrentDictionary<string, ServiceBusClient> _clients = new(StringComparer.Ordinal);
+
+    private ServiceBusClient GetClient(string connectionString)
+        => _clients.GetOrAdd(connectionString, static cs => new ServiceBusClient(cs));
+
     public async Task<IReadOnlyList<MessagePreview>> PeekQueueAsync(string connectionString, string queueName, int maxMessages = 50, long? fromSequenceNumber = null, CancellationToken cancellationToken = default)
     {
-        await using var client = new ServiceBusClient(connectionString);
+        var client = GetClient(connectionString);
         await using var receiver = client.CreateReceiver(queueName);
 
         var messages = await receiver.PeekMessagesAsync(maxMessages, fromSequenceNumber, cancellationToken).ConfigureAwait(false);
@@ -30,7 +36,7 @@ public sealed class AzureServiceBusMessaging : IMessageBrowser, IMessageSender, 
 
     public async Task<IReadOnlyList<MessagePreview>> PeekQueueDeadLetterAsync(string connectionString, string queueName, int maxMessages = 50, long? fromSequenceNumber = null, CancellationToken cancellationToken = default)
     {
-        await using var client = new ServiceBusClient(connectionString);
+        var client = GetClient(connectionString);
         await using var receiver = client.CreateReceiver(queueName, new ServiceBusReceiverOptions { SubQueue = SubQueue.DeadLetter });
 
         var messages = await receiver.PeekMessagesAsync(maxMessages, fromSequenceNumber, cancellationToken).ConfigureAwait(false);
@@ -50,7 +56,7 @@ public sealed class AzureServiceBusMessaging : IMessageBrowser, IMessageSender, 
 
     public async Task<IReadOnlyList<MessagePreview>> PeekSubscriptionAsync(string connectionString, string topicName, string subscriptionName, int maxMessages = 50, long? fromSequenceNumber = null, CancellationToken cancellationToken = default)
     {
-        await using var client = new ServiceBusClient(connectionString);
+        var client = GetClient(connectionString);
         await using var receiver = client.CreateReceiver(topicName, subscriptionName);
 
         var messages = await receiver.PeekMessagesAsync(maxMessages, fromSequenceNumber, cancellationToken).ConfigureAwait(false);
@@ -70,7 +76,7 @@ public sealed class AzureServiceBusMessaging : IMessageBrowser, IMessageSender, 
 
     public async Task<IReadOnlyList<MessagePreview>> PeekSubscriptionDeadLetterAsync(string connectionString, string topicName, string subscriptionName, int maxMessages = 50, long? fromSequenceNumber = null, CancellationToken cancellationToken = default)
     {
-        await using var client = new ServiceBusClient(connectionString);
+        var client = GetClient(connectionString);
         await using var receiver = client.CreateReceiver(topicName, subscriptionName, new ServiceBusReceiverOptions { SubQueue = SubQueue.DeadLetter });
 
         var messages = await receiver.PeekMessagesAsync(maxMessages, fromSequenceNumber, cancellationToken).ConfigureAwait(false);
@@ -90,8 +96,8 @@ public sealed class AzureServiceBusMessaging : IMessageBrowser, IMessageSender, 
 
     public async Task SendToQueueAsync(string connectionString, string queueName, string body, string? subject = null, string? correlationId = null, IDictionary<string, string>? properties = null, string? contentType = null, string? messageId = null, DateTimeOffset? scheduledEnqueueTime = null, CancellationToken cancellationToken = default)
     {
-        await using var client = new ServiceBusClient(connectionString);
-        var sender = client.CreateSender(queueName);
+        var client = GetClient(connectionString);
+        await using var sender = client.CreateSender(queueName);
         var message = new ServiceBusMessage(BinaryData.FromString(body))
         {
             Subject = subject,
@@ -115,13 +121,12 @@ public sealed class AzureServiceBusMessaging : IMessageBrowser, IMessageSender, 
         {
             await sender.SendMessageAsync(message, cancellationToken).ConfigureAwait(false);
         }
-        await sender.DisposeAsync();
     }
 
     public async Task SendToTopicAsync(string connectionString, string topicName, string body, string? subject = null, string? correlationId = null, IDictionary<string, string>? properties = null, string? contentType = null, string? messageId = null, DateTimeOffset? scheduledEnqueueTime = null, CancellationToken cancellationToken = default)
     {
-        await using var client = new ServiceBusClient(connectionString);
-        var sender = client.CreateSender(topicName);
+        var client = GetClient(connectionString);
+        await using var sender = client.CreateSender(topicName);
         var message = new ServiceBusMessage(BinaryData.FromString(body))
         {
             Subject = subject,
@@ -145,12 +150,11 @@ public sealed class AzureServiceBusMessaging : IMessageBrowser, IMessageSender, 
         {
             await sender.SendMessageAsync(message, cancellationToken).ConfigureAwait(false);
         }
-        await sender.DisposeAsync();
     }
 
     public async Task<int> PurgeQueueAsync(string connectionString, string queueName, int maxMessages = 1000, CancellationToken cancellationToken = default)
     {
-        await using var client = new ServiceBusClient(connectionString);
+        var client = GetClient(connectionString);
         await using var receiver = client.CreateReceiver(queueName, new ServiceBusReceiverOptions { ReceiveMode = ServiceBusReceiveMode.ReceiveAndDelete });
 
         var deletedCount = 0;
@@ -166,7 +170,7 @@ public sealed class AzureServiceBusMessaging : IMessageBrowser, IMessageSender, 
 
     public async Task<int> PurgeQueueDeadLetterAsync(string connectionString, string queueName, int maxMessages = 1000, CancellationToken cancellationToken = default)
     {
-        await using var client = new ServiceBusClient(connectionString);
+        var client = GetClient(connectionString);
         await using var receiver = client.CreateReceiver(queueName, new ServiceBusReceiverOptions { SubQueue = SubQueue.DeadLetter, ReceiveMode = ServiceBusReceiveMode.ReceiveAndDelete });
 
         var deletedCount = 0;
@@ -182,9 +186,9 @@ public sealed class AzureServiceBusMessaging : IMessageBrowser, IMessageSender, 
 
     public async Task<int> ReplayQueueDeadLettersAsync(string connectionString, string queueName, int maxMessages = 50, CancellationToken cancellationToken = default)
     {
-        await using var client = new ServiceBusClient(connectionString);
+        var client = GetClient(connectionString);
         await using var deadLetterReceiver = client.CreateReceiver(queueName, new ServiceBusReceiverOptions { SubQueue = SubQueue.DeadLetter });
-        var sender = client.CreateSender(queueName);
+        await using var sender = client.CreateSender(queueName);
 
         var replayedCount = 0;
         var replayStart = DateTimeOffset.UtcNow;
@@ -222,15 +226,14 @@ public sealed class AzureServiceBusMessaging : IMessageBrowser, IMessageSender, 
             }
         }
 
-        await sender.DisposeAsync();
         return replayedCount;
     }
 
     public async Task<int> ReplaySubscriptionDeadLettersAsync(string connectionString, string topicName, string subscriptionName, int maxMessages = 50, CancellationToken cancellationToken = default)
     {
-        await using var client = new ServiceBusClient(connectionString);
+        var client = GetClient(connectionString);
         await using var deadLetterReceiver = client.CreateReceiver(topicName, subscriptionName, new ServiceBusReceiverOptions { SubQueue = SubQueue.DeadLetter });
-        var sender = client.CreateSender(topicName);
+        await using var sender = client.CreateSender(topicName);
 
         var replayedCount = 0;
         var replayStart = DateTimeOffset.UtcNow;
@@ -268,13 +271,12 @@ public sealed class AzureServiceBusMessaging : IMessageBrowser, IMessageSender, 
             }
         }
 
-        await sender.DisposeAsync();
         return replayedCount;
     }
 
     public async Task<MessageDetails?> PeekQueueMessageAsync(string connectionString, string queueName, long sequenceNumber, CancellationToken cancellationToken = default)
     {
-        await using var client = new ServiceBusClient(connectionString);
+        var client = GetClient(connectionString);
         await using var receiver = client.CreateReceiver(queueName);
         var receivedMessage = await PeekOneBySequenceAsync(receiver, sequenceNumber, cancellationToken).ConfigureAwait(false);
         return receivedMessage is null ? null : MapDetails(receivedMessage);
@@ -282,7 +284,7 @@ public sealed class AzureServiceBusMessaging : IMessageBrowser, IMessageSender, 
 
     public async Task<MessageDetails?> PeekQueueDeadLetterMessageAsync(string connectionString, string queueName, long sequenceNumber, CancellationToken cancellationToken = default)
     {
-        await using var client = new ServiceBusClient(connectionString);
+        var client = GetClient(connectionString);
         await using var receiver = client.CreateReceiver(queueName, new ServiceBusReceiverOptions { SubQueue = SubQueue.DeadLetter });
         var receivedMessage = await PeekOneBySequenceAsync(receiver, sequenceNumber, cancellationToken).ConfigureAwait(false);
         return receivedMessage is null ? null : MapDetails(receivedMessage);
@@ -290,7 +292,7 @@ public sealed class AzureServiceBusMessaging : IMessageBrowser, IMessageSender, 
 
     public async Task<MessageDetails?> PeekSubscriptionMessageAsync(string connectionString, string topicName, string subscriptionName, long sequenceNumber, CancellationToken cancellationToken = default)
     {
-        await using var client = new ServiceBusClient(connectionString);
+        var client = GetClient(connectionString);
         await using var receiver = client.CreateReceiver(topicName, subscriptionName);
         var receivedMessage = await PeekOneBySequenceAsync(receiver, sequenceNumber, cancellationToken).ConfigureAwait(false);
         return receivedMessage is null ? null : MapDetails(receivedMessage);
@@ -298,7 +300,7 @@ public sealed class AzureServiceBusMessaging : IMessageBrowser, IMessageSender, 
 
     public async Task<MessageDetails?> PeekSubscriptionDeadLetterMessageAsync(string connectionString, string topicName, string subscriptionName, long sequenceNumber, CancellationToken cancellationToken = default)
     {
-        await using var client = new ServiceBusClient(connectionString);
+        var client = GetClient(connectionString);
         await using var receiver = client.CreateReceiver(topicName, subscriptionName, new ServiceBusReceiverOptions { SubQueue = SubQueue.DeadLetter });
         var receivedMessage = await PeekOneBySequenceAsync(receiver, sequenceNumber, cancellationToken).ConfigureAwait(false);
         return receivedMessage is null ? null : MapDetails(receivedMessage);
@@ -306,7 +308,7 @@ public sealed class AzureServiceBusMessaging : IMessageBrowser, IMessageSender, 
 
     public async Task<int> PurgeSubscriptionAsync(string connectionString, string topicName, string subscriptionName, int maxMessages = 1000, CancellationToken cancellationToken = default)
     {
-        await using var client = new ServiceBusClient(connectionString);
+        var client = GetClient(connectionString);
         await using var receiver = client.CreateReceiver(topicName, subscriptionName, new ServiceBusReceiverOptions { ReceiveMode = ServiceBusReceiveMode.ReceiveAndDelete });
 
         var deletedCount = 0;
@@ -322,7 +324,7 @@ public sealed class AzureServiceBusMessaging : IMessageBrowser, IMessageSender, 
 
     public async Task<int> PurgeSubscriptionDeadLetterAsync(string connectionString, string topicName, string subscriptionName, int maxMessages = 1000, CancellationToken cancellationToken = default)
     {
-        await using var client = new ServiceBusClient(connectionString);
+        var client = GetClient(connectionString);
         await using var receiver = client.CreateReceiver(topicName, subscriptionName, new ServiceBusReceiverOptions { SubQueue = SubQueue.DeadLetter, ReceiveMode = ServiceBusReceiveMode.ReceiveAndDelete });
 
         var deletedCount = 0;
@@ -385,14 +387,14 @@ public sealed class AzureServiceBusMessaging : IMessageBrowser, IMessageSender, 
 
     public async Task<bool> RemoveQueueDeadLetterMessageAsync(string connectionString, string queueName, long sequenceNumber, CancellationToken cancellationToken = default)
     {
-        await using var client = new ServiceBusClient(connectionString);
+        var client = GetClient(connectionString);
         await using var receiver = client.CreateReceiver(queueName, new ServiceBusReceiverOptions { SubQueue = SubQueue.DeadLetter, ReceiveMode = ServiceBusReceiveMode.PeekLock });
         return await RemoveFromReceiverBySequenceAsync(receiver, sequenceNumber, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<bool> RemoveSubscriptionDeadLetterMessageAsync(string connectionString, string topicName, string subscriptionName, long sequenceNumber, CancellationToken cancellationToken = default)
     {
-        await using var client = new ServiceBusClient(connectionString);
+        var client = GetClient(connectionString);
         await using var receiver = client.CreateReceiver(topicName, subscriptionName, new ServiceBusReceiverOptions { SubQueue = SubQueue.DeadLetter, ReceiveMode = ServiceBusReceiveMode.PeekLock });
         return await RemoveFromReceiverBySequenceAsync(receiver, sequenceNumber, cancellationToken).ConfigureAwait(false);
     }
@@ -431,5 +433,14 @@ public sealed class AzureServiceBusMessaging : IMessageBrowser, IMessageSender, 
             scannedCount += receivedMessages.Count;
         }
         return false;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        foreach (var client in _clients.Values)
+        {
+            await client.DisposeAsync().ConfigureAwait(false);
+        }
+        _clients.Clear();
     }
 }

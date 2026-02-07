@@ -1,9 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using Microsoft.AspNetCore.Components;
 using MudBlazor;
 using Vibes.ASBManager.Application.Models;
 
@@ -138,7 +132,7 @@ public partial class EntitiesView
             else
             {
                 var collected = new List<MessagePreview>();
-                long? anchor = _dlqAnchor;
+                var anchor = _dlqAnchor;
                 var target = _dlqCount.HasValue ? (int)Math.Min(_dlqCount.Value, FetchSize * 10) : FetchSize;
                 while (collected.Count < target)
                 {
