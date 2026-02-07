@@ -1,0 +1,46 @@
+@using Vibes.ASBManager.Application.Models
+
+<MudPaper Class="pa-3 mt-3" Elevation="1">
+    <div class="d-flex align-center mb-2" style="gap:8px;">
+        <MudText Typo="Typo.h6">Subscription Rules</MudText>
+        <MudSpacer />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!CanRefresh)" OnClick="@OnCreateRule">
+            <MudIcon Icon="@Icons.Material.Filled.Add" />
+            <span class="ms-1">Add Rule</span>
+        </MudButton>
+        <MudButton Variant="Variant.Outlined" Disabled="@(!CanRefresh)" OnClick="@OnRefresh">
+            <MudIcon Icon="@Icons.Material.Filled.Refresh" />
+            <span class="ms-1">Refresh</span>
+        </MudButton>
+    </div>
+    @if (IsLoading)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+    }
+    <MudTable T="SubscriptionRuleInfo" Items="Rules" Dense="true" Hover="true" Elevation="0">
+        <HeaderContent>
+            <MudTh>Name</MudTh>
+            <MudTh>Filter</MudTh>
+            <MudTh>Action</MudTh>
+            <MudTh>Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Name">@context.Name</MudTd>
+            <MudTd DataLabel="Filter">@context.Filter</MudTd>
+            <MudTd DataLabel="Action">@context.Action</MudTd>
+            <MudTd>
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="@(() => OnDeleteRule.InvokeAsync(context))" />
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+</MudPaper>
+
+@code {
+    [Parameter] public IReadOnlyList<SubscriptionRuleInfo>? Rules { get; set; }
+    [Parameter] public bool IsLoading { get; set; }
+    [Parameter] public bool CanRefresh { get; set; }
+
+    [Parameter] public EventCallback OnCreateRule { get; set; }
+    [Parameter] public EventCallback OnRefresh { get; set; }
+    [Parameter] public EventCallback<SubscriptionRuleInfo> OnDeleteRule { get; set; }
+}
