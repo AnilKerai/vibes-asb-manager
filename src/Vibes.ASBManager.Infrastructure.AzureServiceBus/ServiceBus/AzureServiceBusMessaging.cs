@@ -18,6 +18,32 @@ public sealed class AzureServiceBusMessaging(
     private ServiceBusClient GetClient(string connectionString)
         => _clients.GetOrAdd(connectionString, static cs => new ServiceBusClient(cs));
 
+    private static ServiceBusMessage BuildMessage(
+        string body,
+        string? subject,
+        string? correlationId,
+        IDictionary<string, string>? properties,
+        string? contentType,
+        string? messageId)
+    {
+        var message = new ServiceBusMessage(BinaryData.FromString(body))
+        {
+            Subject = subject,
+            CorrelationId = correlationId,
+            ContentType = contentType
+        };
+        if (!string.IsNullOrEmpty(messageId))
+        {
+            message.MessageId = messageId;
+        }
+        if (properties is not null)
+        {
+            foreach (var applicationProperty in properties)
+                message.ApplicationProperties[applicationProperty.Key] = applicationProperty.Value;
+        }
+        return message;
+    }
+
     public async Task<IReadOnlyList<MessagePreview>> PeekQueueAsync(string connectionString, string queueName, int maxMessages = 50, long? fromSequenceNumber = null, CancellationToken cancellationToken = default)
     {
         var client = GetClient(connectionString);
@@ -102,21 +128,7 @@ public sealed class AzureServiceBusMessaging(
     {
         var client = GetClient(connectionString);
         await using var sender = client.CreateSender(queueName);
-        var message = new ServiceBusMessage(BinaryData.FromString(body))
-        {
-            Subject = subject,
-            CorrelationId = correlationId,
-            ContentType = contentType
-        };
-        if (!string.IsNullOrEmpty(messageId))
-        {
-            message.MessageId = messageId;
-        }
-        if (properties is not null)
-        {
-            foreach (var applicationProperty in properties)
-                message.ApplicationProperties[applicationProperty.Key] = applicationProperty.Value;
-        }
+        var message = BuildMessage(body, subject, correlationId, properties, contentType, messageId);
         if (scheduledEnqueueTime.HasValue && scheduledEnqueueTime.Value > DateTimeOffset.UtcNow)
         {
             await sender.ScheduleMessageAsync(message, scheduledEnqueueTime.Value, cancellationToken).ConfigureAwait(false);
@@ -131,21 +143,7 @@ public sealed class AzureServiceBusMessaging(
     {
         var client = GetClient(connectionString);
         await using var sender = client.CreateSender(topicName);
-        var message = new ServiceBusMessage(BinaryData.FromString(body))
-        {
-            Subject = subject,
-            CorrelationId = correlationId,
-            ContentType = contentType
-        };
-        if (!string.IsNullOrEmpty(messageId))
-        {
-            message.MessageId = messageId;
-        }
-        if (properties is not null)
-        {
-            foreach (var applicationProperty in properties)
-                message.ApplicationProperties[applicationProperty.Key] = applicationProperty.Value;
-        }
+        var message = BuildMessage(body, subject, correlationId, properties, contentType, messageId);
         if (scheduledEnqueueTime.HasValue && scheduledEnqueueTime.Value > DateTimeOffset.UtcNow)
         {
             await sender.ScheduleMessageAsync(message, scheduledEnqueueTime.Value, cancellationToken).ConfigureAwait(false);
@@ -153,6 +151,56 @@ public sealed class AzureServiceBusMessaging(
         else
         {
             await sender.SendMessageAsync(message, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    public async Task SendBatchToQueueAsync(string connectionString, string queueName, string body, int count, string? subject = null, string? correlationId = null, IDictionary<string, string>? properties = null, string? contentType = null, string? messageId = null, CancellationToken cancellationToken = default)
+    {
+        if (count < 1) return;
+        var client = GetClient(connectionString);
+        await using var sender = client.CreateSender(queueName);
+        await SendBatchAsync(sender, body, count, subject, correlationId, properties, contentType, messageId, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task SendBatchToTopicAsync(string connectionString, string topicName, string body, int count, string? subject = null, string? correlationId = null, IDictionary<string, string>? properties = null, string? contentType = null, string? messageId = null, CancellationToken cancellationToken = default)
+    {
+        if (count < 1) return;
+        var client = GetClient(connectionString);
+        await using var sender = client.CreateSender(topicName);
+        await SendBatchAsync(sender, body, count, subject, correlationId, properties, contentType, messageId, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task SendBatchAsync(
+        ServiceBusSender sender,
+        string body,
+        int count,
+        string? subject,
+        string? correlationId,
+        IDictionary<string, string>? properties,
+        string? contentType,
+        string? messageId,
+        CancellationToken cancellationToken)
+    {
+        var remaining = count;
+        while (remaining > 0)
+        {
+            using var batch = await sender.CreateMessageBatchAsync(cancellationToken).ConfigureAwait(false);
+            var added = 0;
+            while (remaining > 0)
+            {
+                var message = BuildMessage(body, subject, correlationId, properties, contentType, messageId);
+                if (!batch.TryAddMessage(message))
+                {
+                    if (added == 0)
+                        throw new InvalidOperationException("Message is too large to fit in a batch.");
+                    break;
+                }
+                added++;
+                remaining--;
+            }
+
+            if (added > 0)
+                await sender.SendMessagesAsync(batch, cancellationToken).ConfigureAwait(false);
         }
     }
 

@@ -427,6 +427,17 @@
                 contentType: contentType,
                 messageId: null,
                 scheduledEnqueueTime: scheduled,
+                cancellationToken: cancellationToken),
+            sendBatchAsync: (req, contentType, cancellationToken) => MessageSender.SendBatchToQueueAsync(
+                connectionString: connectionString,
+                queueName: queueName,
+                body: req.Body,
+                count: req.Count,
+                subject: req.Subject,
+                correlationId: req.CorrelationId,
+                properties: req.Properties,
+                contentType: contentType,
+                messageId: null,
                 cancellationToken: cancellationToken));
     }
 
@@ -447,10 +458,25 @@
                 contentType: contentType,
                 messageId: null,
                 scheduledEnqueueTime: scheduled,
+                cancellationToken: cancellationToken),
+            sendBatchAsync: (req, contentType, cancellationToken) => MessageSender.SendBatchToTopicAsync(
+                connectionString: connectionString,
+                topicName: topicName,
+                body: req.Body,
+                count: req.Count,
+                subject: req.Subject,
+                correlationId: req.CorrelationId,
+                properties: req.Properties,
+                contentType: contentType,
+                messageId: null,
                 cancellationToken: cancellationToken));
     }
 
-    private async Task OpenSendDialogAsync(string title, string targetName, Func<SendMessageRequest, string?, DateTimeOffset?, CancellationToken, Task> sendAsync)
+    private async Task OpenSendDialogAsync(
+        string title,
+        string targetName,
+        Func<SendMessageRequest, string?, DateTimeOffset?, CancellationToken, Task> sendAsync,
+        Func<SendMessageRequest, string?, CancellationToken, Task>? sendBatchAsync = null)
     {
         var parameters = new DialogParameters
         {
@@ -461,14 +487,22 @@
         var result = await dialog.Result;
         if (result is { Canceled: false, Data: SendMessageRequest req })
         {
-            await SendMessagesAsync(targetName, req, sendAsync);
+            await SendMessagesAsync(targetName, req, sendAsync, sendBatchAsync);
         }
     }
 
-    private async Task SendMessagesAsync(string targetName, SendMessageRequest req, Func<SendMessageRequest, string?, DateTimeOffset?, CancellationToken, Task> sendAsync)
+    private async Task SendMessagesAsync(
+        string targetName,
+        SendMessageRequest req,
+        Func<SendMessageRequest, string?, DateTimeOffset?, CancellationToken, Task> sendAsync,
+        Func<SendMessageRequest, string?, CancellationToken, Task>? sendBatchAsync)
     {
         var count = req.Count < 1 ? 1 : req.Count;
         var contentType = string.IsNullOrWhiteSpace(req.ContentType) ? null : req.ContentType;
+        var canBatch = count > 1
+            && !req.ScheduledEnqueueUtc.HasValue
+            && req.IntervalSeconds <= 0
+            && sendBatchAsync is not null;
         var startVerb = req.ScheduledEnqueueUtc.HasValue ? "Scheduling" : "Sending";
         Snackbar.Add(count == 1 ? $"{startVerb} 1 message to {targetName}..." : $"{startVerb} {count} messages to {targetName}...", Severity.Info);
         var token = StartSendCancellation();
@@ -479,19 +513,27 @@
             var cancelled = false;
             try
             {
-                for (var i = 0; i < count && !token.IsCancellationRequested; i++)
+                if (canBatch)
                 {
-                    var sched = req.ScheduledEnqueueUtc;
-                    if (sched.HasValue && req.IntervalSeconds > 0)
+                    await sendBatchAsync!(req, contentType, token);
+                    sent = count;
+                }
+                else
+                {
+                    for (var i = 0; i < count && !token.IsCancellationRequested; i++)
                     {
-                        sched = sched.Value.AddSeconds(req.IntervalSeconds * i);
-                    }
-                    await sendAsync(req, contentType, sched, token);
-                    sent++;
-                    if (!req.ScheduledEnqueueUtc.HasValue && req.IntervalSeconds > 0 && i < count - 1)
-                    {
-                        try { await Task.Delay(TimeSpan.FromSeconds(req.IntervalSeconds), token); }
-                        catch (OperationCanceledException) { }
+                        var sched = req.ScheduledEnqueueUtc;
+                        if (sched.HasValue && req.IntervalSeconds > 0)
+                        {
+                            sched = sched.Value.AddSeconds(req.IntervalSeconds * i);
+                        }
+                        await sendAsync(req, contentType, sched, token);
+                        sent++;
+                        if (!req.ScheduledEnqueueUtc.HasValue && req.IntervalSeconds > 0 && i < count - 1)
+                        {
+                            try { await Task.Delay(TimeSpan.FromSeconds(req.IntervalSeconds), token); }
+                            catch (OperationCanceledException) { }
+                        }
                     }
                 }
             }
