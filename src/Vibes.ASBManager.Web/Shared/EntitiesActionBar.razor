@@ -1,69 +1,55 @@
 <MudPaper Class="pa-2 mb-2 d-flex align-center" Elevation="1" Style="gap:8px;">
-    <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!CanLoad)" OnClick="@OnRefresh">
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@RefreshDisabled" OnClick="@OnRefresh">
         <MudIcon Icon="@Icons.Material.Filled.Refresh" />
         <span class="ms-1">Refresh</span>
     </MudButton>
-    <MudButton Variant="Variant.Outlined" Color="@(LiveOn ? Color.Success : Color.Default)" Disabled="@(!CanRefreshMessages)" OnClick="@OnToggleLive">
-        <MudIcon Icon="@(LiveOn ? Icons.Material.Filled.Pause : Icons.Material.Filled.PlayArrow)" />
-        <span class="ms-1">@(LiveOn ? "Live On" : "Live")</span>
+    <MudButton Variant="Variant.Outlined" Color="@LiveButtonColor" Disabled="@LiveDisabled" OnClick="@OnToggleLive">
+        <MudIcon Icon="@LiveButtonIcon" />
+        <span class="ms-1">@LiveButtonText</span>
     </MudButton>
 
     <MudDivider Vertical="true" Class="mx-2" />
 
-    <MudButton Variant="Variant.Outlined" Disabled="@(!CanSend)" OnClick="@OnSend">
+    <MudButton Variant="Variant.Outlined" Disabled="@SendDisabled" OnClick="@OnSend">
         <MudIcon Icon="@Icons.Material.Filled.Send" />
         <span class="ms-1">Send Message(s)</span>
     </MudButton>
-    <MudButton Variant="Variant.Outlined" Color="Color.Error" Disabled="@(!CanPurgeActive)" OnClick="@OnPurgeActive">
-        <MudIcon Icon="@Icons.Material.Filled.DeleteSweep" />
-        <span class="ms-1">Purge Active</span>
-    </MudButton>
-    <MudButton Variant="Variant.Outlined" Color="Color.Error" Disabled="@(!CanResubmitDlq)" OnClick="@OnResubmitDlq">
+    <MudButton Variant="Variant.Outlined" Color="Color.Error" Disabled="@ResubmitDlqDisabled" OnClick="@OnResubmitDlq">
         <MudIcon Icon="@Icons.Material.Filled.Replay" />
         <span class="ms-1">Resubmit DLQ</span>
     </MudButton>
-    <MudButton Variant="Variant.Outlined" Color="Color.Error" Disabled="@(!CanPurgeDlq)" OnClick="@OnPurgeDlq">
+    <MudButton Variant="Variant.Outlined" Color="Color.Error" Disabled="@PurgeActiveDisabled" OnClick="@OnPurgeActive">
+        <MudIcon Icon="@Icons.Material.Filled.DeleteSweep" />
+        <span class="ms-1">Purge Active</span>
+    </MudButton>
+    <MudButton Variant="Variant.Outlined" Color="Color.Error" Disabled="@PurgeDlqDisabled" OnClick="@OnPurgeDlq">
         <MudIcon Icon="@Icons.Material.Filled.DeleteForever" />
         <span class="ms-1">Purge DLQ</span>
     </MudButton>
 
-    @if (HasConnection && (SelectedIsRoot || SelectedIsQueuesFolder || SelectedIsTopicsFolder))
+    @if (ShowCreateQueue)
     {
-        @if (SelectedIsRoot)
-        {
-            <MudButton Variant="Variant.Outlined" OnClick="@OnCreateQueue">
-                <MudIcon Icon="@Icons.Material.Filled.Add" />
-                <span class="ms-1">New Queue</span>
-            </MudButton>
-            <MudButton Variant="Variant.Outlined" OnClick="@OnCreateTopic">
-                <MudIcon Icon="@Icons.Material.Filled.Add" />
-                <span class="ms-1">New Topic</span>
-            </MudButton>
-        }
-        else if (SelectedIsQueuesFolder)
-        {
-            <MudButton Variant="Variant.Outlined" OnClick="@OnCreateQueue">
-                <MudIcon Icon="@Icons.Material.Filled.Add" />
-                <span class="ms-1">New Queue</span>
-            </MudButton>
-        }
-        else if (SelectedIsTopicsFolder)
-        {
-            <MudButton Variant="Variant.Outlined" OnClick="@OnCreateTopic">
-                <MudIcon Icon="@Icons.Material.Filled.Add" />
-                <span class="ms-1">New Topic</span>
-            </MudButton>
-        }
+        <MudButton Variant="Variant.Outlined" OnClick="@OnCreateQueue">
+            <MudIcon Icon="@Icons.Material.Filled.Add" />
+            <span class="ms-1">New Queue</span>
+        </MudButton>
+    }
+    @if (ShowCreateTopic)
+    {
+        <MudButton Variant="Variant.Outlined" OnClick="@OnCreateTopic">
+            <MudIcon Icon="@Icons.Material.Filled.Add" />
+            <span class="ms-1">New Topic</span>
+        </MudButton>
     }
 
-    @if (SelectedIsQueue)
+    @if (ShowDeleteQueue)
     {
         <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="@OnDeleteQueue">
             <MudIcon Icon="@Icons.Material.Filled.Delete" />
             <span class="ms-1">Delete Queue</span>
         </MudButton>
     }
-    @if (SelectedIsTopic)
+    @if (ShowDeleteTopic)
     {
         <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="@OnDeleteTopic">
             <MudIcon Icon="@Icons.Material.Filled.Delete" />
@@ -71,16 +57,16 @@
         </MudButton>
     }
 
-    @if (SelectedIsTopic)
+    @if (ShowCreateSubscription)
     {
-        <MudButton Variant="Variant.Outlined" Disabled="@(!CanCreateSubscriptionAction)" OnClick="@OnCreateSubscription">
+        <MudButton Variant="Variant.Outlined" Disabled="@CreateSubscriptionDisabled" OnClick="@OnCreateSubscription">
             <MudIcon Icon="@Icons.Material.Filled.Add" />
             <span class="ms-1">New Subscription</span>
         </MudButton>
     }
-    @if (SelectedIsSubscription)
+    @if (ShowDeleteSubscription)
     {
-        <MudButton Variant="Variant.Outlined" Color="Color.Error" Disabled="@(!CanDeleteSubscriptionAction)" OnClick="@OnDeleteSubscription">
+        <MudButton Variant="Variant.Outlined" Color="Color.Error" Disabled="@DeleteSubscriptionDisabled" OnClick="@OnDeleteSubscription">
             <MudIcon Icon="@Icons.Material.Filled.Delete" />
             <span class="ms-1">Delete Subscription</span>
         </MudButton>
