@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Vibes.ASBManager.Domain.Models;
 using Vibes.ASBManager.Infrastructure.Storage.File.IO;
@@ -26,7 +27,7 @@ public class JsonConnectionStoreTests : IDisposable
     {
         var opts = new JsonFileStorageOptions { FilePath = path };
         var monitor = new StaticOptionsMonitor<JsonFileStorageOptions>(opts);
-        return new JsonConnectionStore(monitor, new FileSystemAdapter());
+        return new JsonConnectionStore(monitor, new FileSystemAdapter(), NullLogger<JsonConnectionStore>.Instance);
     }
 
     private static JsonConnectionStore CreateStoreFake(out FakeFileSystem fs, string path = "connections.json")
@@ -34,7 +35,7 @@ public class JsonConnectionStoreTests : IDisposable
         fs = new FakeFileSystem();
         var opts = new JsonFileStorageOptions { FilePath = path };
         var monitor = new StaticOptionsMonitor<JsonFileStorageOptions>(opts);
-        return new JsonConnectionStore(monitor, fs);
+        return new JsonConnectionStore(monitor, fs, NullLogger<JsonConnectionStore>.Instance);
     }
 
     private sealed class StaticOptionsMonitor<T> : IOptionsMonitor<T>

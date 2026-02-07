@@ -25,21 +25,23 @@ public partial class EntitiesView
     private long? _activeCount;
     private long? _dlqCount;
     private CancellationTokenSource? _countsCts;
+    private CancellationTokenSource? _sendCts;
+    private bool _disposed;
     private const int CountsRefreshIntervalMs = 2000;
 
-    private async Task<IReadOnlyList<MessagePreview>> PeekSelectedMessagesAsync(bool isDeadLetter, long? fromSequenceNumber, int maxMessages)
+    private async Task<IReadOnlyList<MessagePreview>> PeekSelectedMessagesAsync(bool isDeadLetter, long? fromSequenceNumber, int maxMessages, CancellationToken cancellationToken = default)
     {
         if (TryGetQueue(out var queueName))
         {
             return isDeadLetter
-                ? await MessageBrowser.PeekQueueDeadLetterAsync(_connectionString!, queueName, maxMessages, fromSequenceNumber)
-                : await MessageBrowser.PeekQueueAsync(_connectionString!, queueName, maxMessages, fromSequenceNumber);
+                ? await MessageBrowser.PeekQueueDeadLetterAsync(_connectionString!, queueName, maxMessages, fromSequenceNumber, cancellationToken)
+                : await MessageBrowser.PeekQueueAsync(_connectionString!, queueName, maxMessages, fromSequenceNumber, cancellationToken);
         }
         if (TryGetSubscription(out var topicName, out var subscriptionName))
         {
             return isDeadLetter
-                ? await MessageBrowser.PeekSubscriptionDeadLetterAsync(_connectionString!, topicName, subscriptionName, maxMessages, fromSequenceNumber)
-                : await MessageBrowser.PeekSubscriptionAsync(_connectionString!, topicName, subscriptionName, maxMessages, fromSequenceNumber);
+                ? await MessageBrowser.PeekSubscriptionDeadLetterAsync(_connectionString!, topicName, subscriptionName, maxMessages, fromSequenceNumber, cancellationToken)
+                : await MessageBrowser.PeekSubscriptionAsync(_connectionString!, topicName, subscriptionName, maxMessages, fromSequenceNumber, cancellationToken);
         }
         return Array.Empty<MessagePreview>();
     }
@@ -51,20 +53,35 @@ public partial class EntitiesView
         return maxSeq == long.MaxValue ? long.MaxValue : maxSeq + 1;
     }
 
+    private CancellationToken StartSendCancellation()
+    {
+        StopSend();
+        _sendCts = new CancellationTokenSource();
+        return _sendCts.Token;
+    }
+
+    private void StopSend()
+    {
+        try { _sendCts?.Cancel(); } catch { }
+        try { _sendCts?.Dispose(); } catch { }
+        _sendCts = null;
+    }
+
     // Active/DLQ refresh and live polling
-    private async Task RefreshActiveAsync()
+    private async Task RefreshActiveAsync(CancellationToken cancellationToken = default)
     {
         if (!CanRefreshMessages || _refreshingActive) return;
+        if (cancellationToken.IsCancellationRequested) return;
         try
         {
             _refreshingActive = true;
             IReadOnlyList<MessagePreview> items = Array.Empty<MessagePreview>();
-            items = await PeekSelectedMessagesAsync(isDeadLetter: false, _activeAnchor, FetchSize);
+            items = await PeekSelectedMessagesAsync(isDeadLetter: false, _activeAnchor, FetchSize, cancellationToken);
             // If not in live mode and our anchor points past the end (yielding no items), reset to null and refetch once
             if (!_liveActive && _activeAnchor.HasValue && items.Count == 0)
             {
                 _activeAnchor = null;
-                items = await PeekSelectedMessagesAsync(isDeadLetter: false, _activeAnchor, FetchSize);
+                items = await PeekSelectedMessagesAsync(isDeadLetter: false, _activeAnchor, FetchSize, cancellationToken);
             }
             if (_liveActive && _pendingActiveClear)
             {
@@ -97,15 +114,16 @@ public partial class EntitiesView
         }
     }
 
-    private async Task RefreshDlqAsync()
+    private async Task RefreshDlqAsync(CancellationToken cancellationToken = default)
     {
         if (!CanRefreshMessages || _refreshingDlq) return;
+        if (cancellationToken.IsCancellationRequested) return;
         try
         {
             _refreshingDlq = true;
             if (_liveDlq)
             {
-                IReadOnlyList<MessagePreview> liveItems = await PeekSelectedMessagesAsync(isDeadLetter: true, _dlqAnchor, FetchSize);
+                IReadOnlyList<MessagePreview> liveItems = await PeekSelectedMessagesAsync(isDeadLetter: true, _dlqAnchor, FetchSize, cancellationToken);
                 if (_pendingDlqClear)
                 {
                     _dlqMessages.Clear();
@@ -122,9 +140,9 @@ public partial class EntitiesView
                 var collected = new List<MessagePreview>();
                 var anchor = _dlqAnchor;
                 var target = _dlqCount.HasValue ? (int)Math.Min(_dlqCount.Value, FetchSize * 10) : FetchSize;
-                while (collected.Count < target)
+                while (collected.Count < target && !cancellationToken.IsCancellationRequested)
                 {
-                    var page = await PeekSelectedMessagesAsync(isDeadLetter: true, anchor, FetchSize);
+                    var page = await PeekSelectedMessagesAsync(isDeadLetter: true, anchor, FetchSize, cancellationToken);
                     if (page.Count == 0) break;
                     collected.AddRange(page);
                     anchor = GetNextAnchor(anchor, page);
@@ -153,7 +171,10 @@ public partial class EntitiesView
         if (CanRefreshMessages && _activeMessages is not null && _activeMessages.Count > 0)
         {
             await RefreshActiveAsync();
-            try { await InvokeAsync(StateHasChanged); } catch { }
+            if (!_disposed)
+            {
+                try { await InvokeAsync(StateHasChanged); } catch { }
+            }
         }
     }
 
@@ -162,24 +183,28 @@ public partial class EntitiesView
         if (CanRefreshMessages && _dlqMessages is not null && _dlqMessages.Count > 0)
         {
             await RefreshDlqAsync();
-            try { await InvokeAsync(StateHasChanged); } catch { }
+            if (!_disposed)
+            {
+                try { await InvokeAsync(StateHasChanged); } catch { }
+            }
         }
     }
 
-    private async Task RefreshCountsAsync()
+    private async Task RefreshCountsAsync(CancellationToken cancellationToken = default)
     {
         if (!HasConnection || string.IsNullOrEmpty(_selectedTreeValue)) { _activeCount = null; _dlqCount = null; return; }
+        if (cancellationToken.IsCancellationRequested) return;
         try
         {
             if (TryGetQueue(out var q))
             {
-                var qs = await QueueAdmin.GetQueueRuntimeAsync(_connectionString!, q);
+                var qs = await QueueAdmin.GetQueueRuntimeAsync(_connectionString!, q, cancellationToken);
                 _activeCount = qs?.ActiveMessageCount;
                 _dlqCount = qs?.DeadLetterMessageCount;
             }
             else if (TryGetSubscription(out var t, out var s))
             {
-                var ss = await SubscriptionAdmin.GetSubscriptionRuntimeAsync(_connectionString!, t, s);
+                var ss = await SubscriptionAdmin.GetSubscriptionRuntimeAsync(_connectionString!, t, s, cancellationToken);
                 _activeCount = ss?.ActiveMessageCount;
                 _dlqCount = ss?.DeadLetterMessageCount;
             }
@@ -209,7 +234,10 @@ public partial class EntitiesView
         }
         finally
         {
-            try { await InvokeAsync(StateHasChanged); } catch { }
+            if (!_disposed)
+            {
+                try { await InvokeAsync(StateHasChanged); } catch { }
+            }
         }
     }
 
@@ -223,7 +251,10 @@ public partial class EntitiesView
         }
         await RefreshCountsAsync();
         await RefreshActiveAsync();
-        try { await InvokeAsync(StateHasChanged); } catch { }
+        if (!_disposed)
+        {
+            try { await InvokeAsync(StateHasChanged); } catch { }
+        }
     }
 
     private async Task OnDlqRefresh()
@@ -236,7 +267,10 @@ public partial class EntitiesView
         }
         await RefreshCountsAsync();
         await RefreshDlqAsync();
-        try { await InvokeAsync(StateHasChanged); } catch { }
+        if (!_disposed)
+        {
+            try { await InvokeAsync(StateHasChanged); } catch { }
+        }
     }
 
     private async Task ToggleLiveActiveAsync()
@@ -284,7 +318,7 @@ public partial class EntitiesView
 
     private void StartLiveActive()
     {
-        if (!CanRefreshMessages) return;
+        if (!CanRefreshMessages || _disposed) return;
         StopLiveActive();
         _liveActive = true;
         // Reset paging to latest when starting live
@@ -296,9 +330,10 @@ public partial class EntitiesView
         _ = Task.Run(async () =>
         {
             var token = _liveActiveCts.Token;
-            while (!token.IsCancellationRequested)
+            while (!token.IsCancellationRequested && !_disposed)
             {
-                await RefreshActiveAsync();
+                await RefreshActiveAsync(token);
+                if (_disposed || token.IsCancellationRequested) break;
                 try { await InvokeAsync(StateHasChanged); } catch { }
                 try { await Task.Delay(1000, token); } catch { break; }
             }
@@ -315,7 +350,7 @@ public partial class EntitiesView
 
     private void StartLiveDlq()
     {
-        if (!CanRefreshMessages) return;
+        if (!CanRefreshMessages || _disposed) return;
         StopLiveDlq();
         _liveDlq = true;
         // Reset paging to latest when starting live
@@ -327,9 +362,10 @@ public partial class EntitiesView
         _ = Task.Run(async () =>
         {
             var token = _liveDlqCts.Token;
-            while (!token.IsCancellationRequested)
+            while (!token.IsCancellationRequested && !_disposed)
             {
-                await RefreshDlqAsync();
+                await RefreshDlqAsync(token);
+                if (_disposed || token.IsCancellationRequested) break;
                 try { await InvokeAsync(StateHasChanged); } catch { }
                 try { await Task.Delay(1000, token); } catch { break; }
             }
@@ -346,15 +382,15 @@ public partial class EntitiesView
 
     private void StartCountsPolling()
     {
-        if (string.IsNullOrEmpty(_selectedTreeValue)) return;
+        if (string.IsNullOrEmpty(_selectedTreeValue) || _disposed) return;
         StopCountsPolling();
         _countsCts = new CancellationTokenSource();
         _ = Task.Run(async () =>
         {
             var token = _countsCts!.Token;
-            while (!token.IsCancellationRequested)
+            while (!token.IsCancellationRequested && !_disposed)
             {
-                await RefreshCountsAsync();
+                await RefreshCountsAsync(token);
                 try { await Task.Delay(CountsRefreshIntervalMs, token); } catch { break; }
             }
         });
@@ -467,8 +503,10 @@ public partial class EntitiesView
 
     public void Dispose()
     {
+        _disposed = true;
         StopLiveActive();
         StopLiveDlq();
         StopCountsPolling();
+        StopSend();
     }
 }
