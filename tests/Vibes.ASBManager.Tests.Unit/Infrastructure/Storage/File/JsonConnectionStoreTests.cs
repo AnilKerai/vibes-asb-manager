@@ -138,6 +138,44 @@ public class JsonConnectionStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task Save_overwrites_existing_connection_by_id()
+    {
+        var store = CreateStoreFake(out _);
+        var connection = new ConnectionInfo { Id = "conn-1", Name = "Old" };
+        await store.SaveAsync(connection);
+
+        var updated = new ConnectionInfo { Id = "conn-1", Name = "New", Pinned = true };
+        await store.SaveAsync(updated);
+
+        var all = await store.GetAllAsync();
+        var saved = Assert.Single(all);
+        Assert.Equal("New", saved.Name);
+        Assert.True(saved.Pinned);
+    }
+
+    [Fact]
+    public async Task Delete_with_missing_id_is_noop()
+    {
+        var store = CreateStoreFake(out _);
+        await store.SaveAsync(new ConnectionInfo { Name = "Only" });
+
+        await store.DeleteAsync(string.Empty);
+
+        var all = await store.GetAllAsync();
+        Assert.Single(all);
+    }
+
+    [Fact]
+    public async Task GetAll_returns_empty_when_file_missing()
+    {
+        var store = CreateStoreFake(out _);
+
+        var all = await store.GetAllAsync();
+
+        Assert.Empty(all);
+    }
+
+    [Fact]
     public async Task Concurrent_saves_do_not_corrupt_file()
     {
         var store = CreateStoreFake(out _);
