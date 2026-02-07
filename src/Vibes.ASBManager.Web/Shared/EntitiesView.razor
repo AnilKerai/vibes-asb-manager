@@ -75,6 +75,15 @@
                 OnDeleteSubscription="@DeleteSelectedSubscriptionAsync"
                 OnToggleLive="@ToggleLiveBothAsync" />
 
+            <MudPaper Class="pa-2 mb-2 d-flex flex-wrap align-center" Elevation="1" Style="gap:8px;">
+                <MudText Typo="Typo.subtitle2" Class="me-1">Namespace snapshot</MudText>
+                <MudChip T="string" Color="Color.Primary" Variant="Variant.Outlined" Size="Size.Small">Queues: @FormatCount(QueueCount)</MudChip>
+                <MudChip T="string" Color="Color.Primary" Variant="Variant.Outlined" Size="Size.Small">Topics: @FormatCount(TopicCount)</MudChip>
+                <MudChip T="string" Color="Color.Primary" Variant="Variant.Outlined" Size="Size.Small">Subs: @FormatCount(SubscriptionCount)</MudChip>
+                <MudChip T="string" Color="Color.Warning" Variant="Variant.Outlined" Size="Size.Small">DLQ: @FormatCount(TotalDlqCount)</MudChip>
+                <MudChip T="string" Color="Color.Info" Variant="Variant.Outlined" Size="Size.Small">Scheduled: @FormatCount(TotalScheduledCount)</MudChip>
+            </MudPaper>
+
             <EntitySettingsPanel
                 IsSelectionValid="@(!string.IsNullOrEmpty(_selectedTreeValue) && (SelectedIsQueue || SelectedIsTopic || SelectedIsSubscription))"
                 SelectedFriendly="@SelectedFriendly"
@@ -166,6 +175,19 @@
     private string? _forwardTo;
     private string? _forwardDeadLetteredTo;
     private bool _requiresSession;
+
+    private long? QueueCount => _queues is null ? null : _queues.Count;
+    private long? TopicCount => _topics is null ? null : _topics.Count;
+    private long? SubscriptionCount => _topics is null
+        ? null
+        : _topicSubscriptions.Sum(pair => pair.Value?.Count ?? 0);
+    private long? TotalDlqCount => _queues is null && _topics is null
+        ? null
+        : (_queues?.Sum(queue => queue.DeadLetterMessageCount) ?? 0)
+          + _topicSubscriptions.Sum(pair => pair.Value?.Sum(subscription => subscription.DeadLetterMessageCount) ?? 0);
+    private long? TotalScheduledCount => _topics is null
+        ? null
+        : _topics.Sum(topic => topic.ScheduledMessageCount);
 
     // Messages view state lives in EntitiesView.MessageBrowser.cs
 
@@ -851,6 +873,8 @@
     }
 
     private static string FormatTimeSpan(TimeSpan ts) => ts.ToString("c");
+
+    private static string FormatCount(long? count) => count.HasValue ? count.Value.ToString("N0") : "-";
 
     private bool TryParseTtl(out TimeSpan ttl)
     {
