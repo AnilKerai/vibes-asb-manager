@@ -82,7 +82,7 @@ public sealed class AzureServiceBusAdmin(
             try
             {
                 var topicRuntimeResponse = await client.GetTopicRuntimePropertiesAsync(topic.Name, cancellationToken).ConfigureAwait(false);
-                scheduledMessageCount = (long)topicRuntimeResponse.Value.ScheduledMessageCount;
+                scheduledMessageCount = topicRuntimeResponse.Value.ScheduledMessageCount;
             }
             catch (RequestFailedException)
             {
@@ -101,11 +101,30 @@ public sealed class AzureServiceBusAdmin(
             queueSummaries.Add(new QueueSummary
             {
                 Name = queueRuntimeProperties.Name,
-                ActiveMessageCount = (long)queueRuntimeProperties.ActiveMessageCount,
-                DeadLetterMessageCount = (long)queueRuntimeProperties.DeadLetterMessageCount
+                ActiveMessageCount = queueRuntimeProperties.ActiveMessageCount,
+                DeadLetterMessageCount = queueRuntimeProperties.DeadLetterMessageCount
             });
         }
         return queueSummaries.OrderBy(queue => queue.Name).ToList();
+    }
+
+    public async Task<QueueSummary?> GetQueueRuntimeAsync(string connectionString, string queueName, CancellationToken cancellationToken = default)
+    {
+        var client = GetClient(connectionString);
+        try
+        {
+            var response = await client.GetQueueRuntimePropertiesAsync(queueName, cancellationToken).ConfigureAwait(false);
+            return new QueueSummary
+            {
+                Name = response.Value.Name,
+                ActiveMessageCount = response.Value.ActiveMessageCount,
+                DeadLetterMessageCount = response.Value.DeadLetterMessageCount
+            };
+        }
+        catch (RequestFailedException)
+        {
+            return null;
+        }
     }
 
     public async Task<IReadOnlyList<SubscriptionSummary>> ListSubscriptionsAsync(string connectionString, string topicName, CancellationToken cancellationToken = default)
@@ -118,11 +137,31 @@ public sealed class AzureServiceBusAdmin(
             {
                 TopicName = topicName,
                 SubscriptionName = subscriptionRuntimeProperties.SubscriptionName,
-                ActiveMessageCount = (long)subscriptionRuntimeProperties.ActiveMessageCount,
-                DeadLetterMessageCount = (long)subscriptionRuntimeProperties.DeadLetterMessageCount
+                ActiveMessageCount = subscriptionRuntimeProperties.ActiveMessageCount,
+                DeadLetterMessageCount = subscriptionRuntimeProperties.DeadLetterMessageCount
             });
         }
         return subscriptionSummaries.OrderBy(subscription => subscription.SubscriptionName).ToList();
+    }
+
+    public async Task<SubscriptionSummary?> GetSubscriptionRuntimeAsync(string connectionString, string topicName, string subscriptionName, CancellationToken cancellationToken = default)
+    {
+        var client = GetClient(connectionString);
+        try
+        {
+            var response = await client.GetSubscriptionRuntimePropertiesAsync(topicName, subscriptionName, cancellationToken).ConfigureAwait(false);
+            return new SubscriptionSummary
+            {
+                TopicName = topicName,
+                SubscriptionName = response.Value.SubscriptionName,
+                ActiveMessageCount = response.Value.ActiveMessageCount,
+                DeadLetterMessageCount = response.Value.DeadLetterMessageCount
+            };
+        }
+        catch (RequestFailedException)
+        {
+            return null;
+        }
     }
 
     public async Task<QueueSettings> GetQueueSettingsAsync(string connectionString, string queueName, CancellationToken cancellationToken = default)

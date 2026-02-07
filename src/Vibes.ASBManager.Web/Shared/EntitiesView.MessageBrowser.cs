@@ -27,6 +27,30 @@ public partial class EntitiesView
     private CancellationTokenSource? _countsCts;
     private const int CountsRefreshIntervalMs = 2000;
 
+    private async Task<IReadOnlyList<MessagePreview>> PeekSelectedMessagesAsync(bool isDeadLetter, long? fromSequenceNumber, int maxMessages)
+    {
+        if (TryGetQueue(out var queueName))
+        {
+            return isDeadLetter
+                ? await MessageBrowser.PeekQueueDeadLetterAsync(_connectionString!, queueName, maxMessages, fromSequenceNumber)
+                : await MessageBrowser.PeekQueueAsync(_connectionString!, queueName, maxMessages, fromSequenceNumber);
+        }
+        if (TryGetSubscription(out var topicName, out var subscriptionName))
+        {
+            return isDeadLetter
+                ? await MessageBrowser.PeekSubscriptionDeadLetterAsync(_connectionString!, topicName, subscriptionName, maxMessages, fromSequenceNumber)
+                : await MessageBrowser.PeekSubscriptionAsync(_connectionString!, topicName, subscriptionName, maxMessages, fromSequenceNumber);
+        }
+        return Array.Empty<MessagePreview>();
+    }
+
+    private static long? GetNextAnchor(long? currentAnchor, IReadOnlyList<MessagePreview> items)
+    {
+        if (items.Count == 0) return currentAnchor;
+        var maxSeq = items.Max(m => m.SequenceNumber);
+        return maxSeq == long.MaxValue ? long.MaxValue : maxSeq + 1;
+    }
+
     // Active/DLQ refresh and live polling
     private async Task RefreshActiveAsync()
     {
@@ -35,30 +59,12 @@ public partial class EntitiesView
         {
             _refreshingActive = true;
             IReadOnlyList<MessagePreview> items = Array.Empty<MessagePreview>();
-            if (TryGetQueue(out var q))
-            {
-                items = await MessageBrowser.PeekQueueAsync(_connectionString!, q, maxMessages: FetchSize, fromSequenceNumber: _activeAnchor)
-                    ?? Array.Empty<MessagePreview>();
-            }
-            else if (TryGetSubscription(out var t, out var s))
-            {
-                items = await MessageBrowser.PeekSubscriptionAsync(_connectionString!, t, s, maxMessages: FetchSize, fromSequenceNumber: _activeAnchor)
-                    ?? Array.Empty<MessagePreview>();
-            }
+            items = await PeekSelectedMessagesAsync(isDeadLetter: false, _activeAnchor, FetchSize);
             // If not in live mode and our anchor points past the end (yielding no items), reset to null and refetch once
             if (!_liveActive && _activeAnchor.HasValue && items.Count == 0)
             {
                 _activeAnchor = null;
-                if (TryGetQueue(out var q2))
-                {
-                    items = await MessageBrowser.PeekQueueAsync(_connectionString!, q2, maxMessages: FetchSize, fromSequenceNumber: _activeAnchor)
-                        ?? Array.Empty<MessagePreview>();
-                }
-                else if (TryGetSubscription(out var t2, out var s2))
-                {
-                    items = await MessageBrowser.PeekSubscriptionAsync(_connectionString!, t2, s2, maxMessages: FetchSize, fromSequenceNumber: _activeAnchor)
-                        ?? Array.Empty<MessagePreview>();
-                }
+                items = await PeekSelectedMessagesAsync(isDeadLetter: false, _activeAnchor, FetchSize);
             }
             if (_liveActive && _pendingActiveClear)
             {
@@ -69,11 +75,7 @@ public partial class EntitiesView
             }
             if (_liveActive)
             {
-                if (items.Count > 0)
-                {
-                    var maxSeq = items.Max(m => m.SequenceNumber);
-                    _activeAnchor = maxSeq == long.MaxValue ? long.MaxValue : maxSeq + 1;
-                }
+                _activeAnchor = GetNextAnchor(_activeAnchor, items);
                 _activeMessages = MergeLatestWindow(_activeMessages, items, FetchSize);
                 ReconcileActiveFromDlq();
             }
@@ -103,17 +105,7 @@ public partial class EntitiesView
             _refreshingDlq = true;
             if (_liveDlq)
             {
-                IReadOnlyList<MessagePreview> liveItems = Array.Empty<MessagePreview>();
-                if (TryGetQueue(out var q))
-                {
-                    liveItems = await MessageBrowser.PeekQueueDeadLetterAsync(_connectionString!, q, maxMessages: FetchSize, fromSequenceNumber: _dlqAnchor)
-                        ?? Array.Empty<MessagePreview>();
-                }
-                else if (TryGetSubscription(out var t, out var s))
-                {
-                    liveItems = await MessageBrowser.PeekSubscriptionDeadLetterAsync(_connectionString!, t, s, maxMessages: FetchSize, fromSequenceNumber: _dlqAnchor)
-                        ?? Array.Empty<MessagePreview>();
-                }
+                IReadOnlyList<MessagePreview> liveItems = await PeekSelectedMessagesAsync(isDeadLetter: true, _dlqAnchor, FetchSize);
                 if (_pendingDlqClear)
                 {
                     _dlqMessages.Clear();
@@ -121,11 +113,7 @@ public partial class EntitiesView
                     _dlqAnchor = null;
                     _pendingDlqClear = false;
                 }
-                if (liveItems.Count > 0)
-                {
-                    var maxSeq = liveItems.Max(m => m.SequenceNumber);
-                    _dlqAnchor = maxSeq == long.MaxValue ? long.MaxValue : maxSeq + 1;
-                }
+                _dlqAnchor = GetNextAnchor(_dlqAnchor, liveItems);
                 _dlqMessages = MergeLatestWindow(_dlqMessages, liveItems, FetchSize);
                 ReconcileActiveFromDlq();
             }
@@ -136,21 +124,10 @@ public partial class EntitiesView
                 var target = _dlqCount.HasValue ? (int)Math.Min(_dlqCount.Value, FetchSize * 10) : FetchSize;
                 while (collected.Count < target)
                 {
-                    IReadOnlyList<MessagePreview> page = Array.Empty<MessagePreview>();
-                    if (TryGetQueue(out var q))
-                    {
-                        page = await MessageBrowser.PeekQueueDeadLetterAsync(_connectionString!, q, maxMessages: FetchSize, fromSequenceNumber: anchor)
-                            ?? Array.Empty<MessagePreview>();
-                    }
-                    else if (TryGetSubscription(out var t, out var s))
-                    {
-                        page = await MessageBrowser.PeekSubscriptionDeadLetterAsync(_connectionString!, t, s, maxMessages: FetchSize, fromSequenceNumber: anchor)
-                            ?? Array.Empty<MessagePreview>();
-                    }
+                    var page = await PeekSelectedMessagesAsync(isDeadLetter: true, anchor, FetchSize);
                     if (page.Count == 0) break;
                     collected.AddRange(page);
-                    var maxSeq = page.Max(m => m.SequenceNumber);
-                    anchor = maxSeq == long.MaxValue ? long.MaxValue : maxSeq + 1;
+                    anchor = GetNextAnchor(anchor, page);
                     if (page.Count < FetchSize) break;
                 }
                 _dlqAnchor = anchor;
@@ -196,15 +173,13 @@ public partial class EntitiesView
         {
             if (TryGetQueue(out var q))
             {
-                var queues = await QueueAdmin.ListQueuesAsync(_connectionString!);
-                var qs = queues?.FirstOrDefault(x => string.Equals(x.Name, q, StringComparison.OrdinalIgnoreCase));
+                var qs = await QueueAdmin.GetQueueRuntimeAsync(_connectionString!, q);
                 _activeCount = qs?.ActiveMessageCount;
                 _dlqCount = qs?.DeadLetterMessageCount;
             }
             else if (TryGetSubscription(out var t, out var s))
             {
-                var subs = await SubscriptionAdmin.ListSubscriptionsAsync(_connectionString!, t);
-                var ss = subs?.FirstOrDefault(x => string.Equals(x.SubscriptionName, s, StringComparison.OrdinalIgnoreCase));
+                var ss = await SubscriptionAdmin.GetSubscriptionRuntimeAsync(_connectionString!, t, s);
                 _activeCount = ss?.ActiveMessageCount;
                 _dlqCount = ss?.DeadLetterMessageCount;
             }

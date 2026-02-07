@@ -191,9 +191,7 @@ public sealed class AzureServiceBusMessaging : IMessageBrowser, IMessageSender, 
         await using var sender = client.CreateSender(queueName);
 
         var replayedCount = 0;
-        var replayStart = DateTimeOffset.UtcNow;
-        var stopReplay = false;
-        while (!stopReplay && replayedCount < maxMessages && !cancellationToken.IsCancellationRequested)
+        while (replayedCount < maxMessages && !cancellationToken.IsCancellationRequested)
         {
             var batchSize = Math.Min(50, maxMessages - replayedCount);
             var deadLetterMessages = await deadLetterReceiver.ReceiveMessagesAsync(batchSize, TimeSpan.FromSeconds(2), cancellationToken).ConfigureAwait(false);
@@ -201,12 +199,6 @@ public sealed class AzureServiceBusMessaging : IMessageBrowser, IMessageSender, 
 
             foreach (var deadLetterMessage in deadLetterMessages)
             {
-                if (deadLetterMessage.EnqueuedTime > replayStart)
-                {
-                    await deadLetterReceiver.AbandonMessageAsync(deadLetterMessage, null, cancellationToken).ConfigureAwait(false);
-                    stopReplay = true;
-                    break;
-                }
                 var replayMessage = new ServiceBusMessage(deadLetterMessage.Body)
                 {
                     Subject = deadLetterMessage.Subject,
@@ -236,9 +228,7 @@ public sealed class AzureServiceBusMessaging : IMessageBrowser, IMessageSender, 
         await using var sender = client.CreateSender(topicName);
 
         var replayedCount = 0;
-        var replayStart = DateTimeOffset.UtcNow;
-        var stopReplay = false;
-        while (!stopReplay && replayedCount < maxMessages && !cancellationToken.IsCancellationRequested)
+        while (replayedCount < maxMessages && !cancellationToken.IsCancellationRequested)
         {
             var batchSize = Math.Min(50, maxMessages - replayedCount);
             var deadLetterMessages = await deadLetterReceiver.ReceiveMessagesAsync(batchSize, TimeSpan.FromSeconds(2), cancellationToken).ConfigureAwait(false);
@@ -246,12 +236,6 @@ public sealed class AzureServiceBusMessaging : IMessageBrowser, IMessageSender, 
 
             foreach (var deadLetterMessage in deadLetterMessages)
             {
-                if (deadLetterMessage.EnqueuedTime > replayStart)
-                {
-                    await deadLetterReceiver.AbandonMessageAsync(deadLetterMessage, null, cancellationToken).ConfigureAwait(false);
-                    stopReplay = true;
-                    break;
-                }
                 var replayMessage = new ServiceBusMessage(deadLetterMessage.Body)
                 {
                     Subject = deadLetterMessage.Subject,

@@ -5,6 +5,7 @@ namespace Vibes.ASBManager.Application.Interfaces.Admin;
 public interface ISubscriptionAdmin
 {
     Task<IReadOnlyList<SubscriptionSummary>> ListSubscriptionsAsync(string connectionString, string topicName, CancellationToken cancellationToken = default);
+    Task<SubscriptionSummary?> GetSubscriptionRuntimeAsync(string connectionString, string topicName, string subscriptionName, CancellationToken cancellationToken = default);
     Task CreateSubscriptionAsync(string connectionString, string topicName, string subscriptionName, CancellationToken cancellationToken = default);
     Task DeleteSubscriptionAsync(string connectionString, string topicName, string subscriptionName, CancellationToken cancellationToken = default);
 
