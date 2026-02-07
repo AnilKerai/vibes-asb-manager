@@ -9,8 +9,7 @@
         </MudForm>
     </DialogContent>
     <DialogActions>
-        <MudButton OnClick="OnCancel" tabindex="98">Cancel</MudButton>
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="OnSaveAsync" tabindex="99">Create</MudButton>
+        <DialogActionButtons SaveText="Create" OnCancel="OnCancel" OnSave="OnSaveAsync" />
     </DialogActions>
 </MudDialog>
 

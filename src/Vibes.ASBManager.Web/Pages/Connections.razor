@@ -4,6 +4,7 @@
 @inject IConnectionStore ConnectionStore
 @inject IDialogService DialogService
 @inject NavigationManager Nav
+@inject ILogger<Connections> Logger
  
 
 <MudPaper Class="pa-0">
@@ -68,7 +69,11 @@
         // Ensure we have the latest connections if the target is not found yet (e.g., added from MainLayout)
         if (_connections is null || !_connections.Any(c => string.Equals(c.Id, ConnectionId, StringComparison.OrdinalIgnoreCase)))
         {
-            try { _connections = await ConnectionStore.GetAllAsync(); } catch { }
+            try { _connections = await ConnectionStore.GetAllAsync(); }
+            catch (Exception ex)
+            {
+                Logger?.LogWarning(ex, "Failed to reload connections for query selection.");
+            }
         }
 
         var conn = _connections?.FirstOrDefault(c => string.Equals(c.Id, ConnectionId, StringComparison.OrdinalIgnoreCase));
@@ -117,7 +122,11 @@
         }
         _activeTabIndex = existingIndex;
         // Keep the URL in sync so subsequent clicks navigate correctly
-        try { Nav.NavigateTo($"/?connectionId={conn.Id}", replace: true); } catch { }
+        try { Nav.NavigateTo($"/?connectionId={conn.Id}", replace: true); }
+        catch (Exception ex)
+        {
+            Logger?.LogDebug(ex, "Failed to update URL for connection {ConnectionId}.", conn.Id);
+        }
         StateHasChanged();
     }
 
@@ -138,7 +147,11 @@
         {
             // No tabs left: reset active index and clear the connectionId from the URL
             _activeTabIndex = 0;
-            try { Nav.NavigateTo("/", replace: true); } catch { }
+            try { Nav.NavigateTo("/", replace: true); }
+            catch (Exception ex)
+            {
+                Logger?.LogDebug(ex, "Failed to clear URL after closing last tab.");
+            }
             StateHasChanged();
             return;
         }
@@ -150,7 +163,11 @@
 
         // Keep URL in sync with the newly active tab so re-clicking the same connection in the drawer navigates again
         var activeId = _openConnections[_activeTabIndex].Id;
-        try { Nav.NavigateTo($"/?connectionId={activeId}", replace: true); } catch { }
+        try { Nav.NavigateTo($"/?connectionId={activeId}", replace: true); }
+        catch (Exception ex)
+        {
+            Logger?.LogDebug(ex, "Failed to update URL for active connection {ConnectionId}.", activeId);
+        }
 
         StateHasChanged();
     }

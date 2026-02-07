@@ -9,6 +9,7 @@
 @inject ProtectedLocalStorage LocalStorage
 @inject ISnackbar Snackbar
 @inject IJSRuntime Js
+@inject ILogger<MainLayout> Logger
 
 <MudThemeProvider Theme="@CeruleanTheme" IsDarkMode="@_isDarkMode" />
 <MudPopoverProvider />
@@ -382,8 +383,9 @@
             var res = await LocalStorage.GetAsync<bool>("asb:theme:dark");
             _isDarkMode = res.Success ? res.Value : false;
         }
-        catch
+        catch (Exception ex)
         {
+            Logger?.LogDebug(ex, "Failed to load theme preference; defaulting to light mode.");
             _isDarkMode = false;
         }
         UpdateActiveConnectionId();
@@ -395,7 +397,11 @@
     private async Task ToggleDarkMode()
     {
         _isDarkMode = !_isDarkMode;
-        try { await LocalStorage.SetAsync("asb:theme:dark", _isDarkMode); } catch { }
+        try { await LocalStorage.SetAsync("asb:theme:dark", _isDarkMode); }
+        catch (Exception ex)
+        {
+            Logger?.LogWarning(ex, "Failed to persist theme preference.");
+        }
         StateHasChanged();
     }
 
@@ -407,8 +413,9 @@
         {
             _connections = await ConnectionStore.GetAllAsync();
         }
-        catch
+        catch (Exception ex)
         {
+            Logger?.LogWarning(ex, "Failed to load connections.");
             _connections = Array.Empty<ConnectionInfo>();
         }
         StateHasChanged();
@@ -418,7 +425,11 @@
     {
         if (c is null) return;
         c.Pinned = !c.Pinned;
-        try { await ConnectionStore.SaveAsync(c); } catch { }
+        try { await ConnectionStore.SaveAsync(c); }
+        catch (Exception ex)
+        {
+            Logger?.LogWarning(ex, "Failed to update pinned state for connection {ConnectionId}.", c.Id);
+        }
         await LoadConnectionsAsync();
     }
 
@@ -482,8 +493,9 @@
             await Js.InvokeVoidAsync("navigator.clipboard.writeText", cs);
             Snackbar.Add("Connection string copied", Severity.Success);
         }
-        catch
+        catch (Exception ex)
         {
+            Logger?.LogWarning(ex, "Failed to copy connection string to clipboard.");
             await DialogService.ShowMessageBox(
                 title: "Copy failed",
                 message: "Your browser blocked clipboard access. Please copy manually.",
@@ -514,7 +526,10 @@
                     Nav.NavigateTo("/", replace: true);
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Logger?.LogDebug(ex, "Failed to sync URL after removing connection {ConnectionId}.", c.Id);
+            }
             Snackbar.Add("Connection removed", Severity.Success);
         }
         catch (Exception ex)
@@ -566,8 +581,9 @@
             var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query);
             _activeConnectionId = query.TryGetValue("connectionId", out var value) ? value.FirstOrDefault() : null;
         }
-        catch
+        catch (Exception ex)
         {
+            Logger?.LogDebug(ex, "Failed to read connectionId from URL.");
             _activeConnectionId = null;
         }
     }
