@@ -1,0 +1,27 @@
+@using Vibes.ASBManager.Application.Models
+
+<MudPaper Outlined="true" Class="pa-3">
+    <MudText Typo="Typo.subtitle1" Class="mb-2">Service Bus</MudText>
+    <ServiceBusTree
+        SelectedValue="@SelectedValue"
+        SelectedValueChanged="@SelectedValueChanged"
+        Queues="@Queues"
+        Topics="@Topics"
+        TopicSubscriptions="@TopicSubscriptions"
+        QueuesExpanded="@QueuesExpanded"
+        TopicsExpanded="@TopicsExpanded"
+        ExpandedTopicNames="@ExpandedTopicNames" />
+</MudPaper>
+
+@code {
+    [Parameter] public string? SelectedValue { get; set; }
+    [Parameter] public EventCallback<string?> SelectedValueChanged { get; set; }
+
+    [Parameter] public IReadOnlyList<QueueSummary>? Queues { get; set; }
+    [Parameter] public IReadOnlyList<TopicSummary>? Topics { get; set; }
+    [Parameter] public Dictionary<string, IReadOnlyList<SubscriptionSummary>> TopicSubscriptions { get; set; } = new();
+
+    [Parameter] public bool QueuesExpanded { get; set; }
+    [Parameter] public bool TopicsExpanded { get; set; }
+    [Parameter] public HashSet<string> ExpandedTopicNames { get; set; } = new();
+}
