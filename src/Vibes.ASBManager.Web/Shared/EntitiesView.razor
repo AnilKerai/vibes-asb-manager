@@ -8,6 +8,7 @@
 @inject IDeadLetterMaintenance DeadLetterMaintenance
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
+@inject ILogger<EntitiesView> Logger
 @using Vibes.ASBManager.Application.Interfaces.Admin
 @using Vibes.ASBManager.Application.Interfaces.Messaging
 @using Vibes.ASBManager.Web.Models
@@ -298,7 +299,11 @@
         _activeMessages.Clear();
         _activeAnchor = null;
         _activeHistory.Clear();
-        try { await InvokeAsync(StateHasChanged); } catch { }
+        try { await InvokeAsync(StateHasChanged); }
+        catch (Exception ex)
+        {
+            Logger?.LogDebug(ex, "Failed to refresh UI after active purge.");
+        }
         await RefreshActiveIfNeededAsync();
         await RefreshCountsAsync();
     }
@@ -309,7 +314,11 @@
         _dlqMessages.Clear();
         _dlqAnchor = null;
         _dlqHistory.Clear();
-        try { await InvokeAsync(StateHasChanged); } catch { }
+        try { await InvokeAsync(StateHasChanged); }
+        catch (Exception ex)
+        {
+            Logger?.LogDebug(ex, "Failed to refresh UI after DLQ purge.");
+        }
         await RefreshDlqIfNeededAsync();
         await RefreshCountsAsync();
     }
@@ -384,9 +393,9 @@
                         var subs = await SubscriptionAdmin.ListSubscriptionsAsync(_connectionString, t.Name);
                         _topicSubscriptions[t.Name] = subs;
                     }
-                    catch
+                    catch (Exception ex)
                     {
-                        // Ignore individual topic errors for now
+                        Logger?.LogWarning(ex, "Failed to load subscriptions for topic {TopicName}", t.Name);
                     }
                 }
             }
@@ -481,7 +490,8 @@
                     sent++;
                     if (!req.ScheduledEnqueueUtc.HasValue && req.IntervalSeconds > 0 && i < count - 1)
                     {
-                        try { await Task.Delay(TimeSpan.FromSeconds(req.IntervalSeconds), token); } catch { }
+                        try { await Task.Delay(TimeSpan.FromSeconds(req.IntervalSeconds), token); }
+                        catch (OperationCanceledException) { }
                     }
                 }
             }
@@ -523,7 +533,11 @@
                     {
                         await RefreshActiveAsync();
                         await RefreshCountsAsync();
-                        try { await InvokeAsync(StateHasChanged); } catch { }
+                        try { await InvokeAsync(StateHasChanged); }
+                        catch (Exception ex)
+                        {
+                            Logger?.LogDebug(ex, "Failed to refresh UI after send.");
+                        }
                     }
                 }
             }
@@ -876,13 +890,7 @@
 
     private static string FormatCount(long? count) => count.HasValue ? count.Value.ToString("N0") : "-";
 
-    private bool TryParseTtl(out TimeSpan ttl)
-    {
-        ttl = default;
-        if (string.IsNullOrWhiteSpace(_ttlText)) return false;
-        return TimeSpan.TryParse(_ttlText, System.Globalization.CultureInfo.InvariantCulture, out ttl)
-            || TimeSpan.TryParseExact(_ttlText, "c", System.Globalization.CultureInfo.InvariantCulture, out ttl);
-    }
+    private bool TryParseTtl(out TimeSpan ttl) => TimeSpanParser.TryParse(_ttlText, out ttl);
 
     private bool CanSaveSettings => HasConnection && !string.IsNullOrEmpty(_selectedTreeValue) && !_settingsSaving && !_settingsLoading && TryParseTtl(out _);
 
@@ -1025,15 +1033,19 @@
                 }
                 else ttlToSet = parsed;
             }
-            catch
+            catch (Exception ex)
             {
+                Logger?.LogWarning(ex, "Failed to resolve subscription TTL for {TopicName}/{SubscriptionName}; using default.", topicName, subName);
                 ttlToSet = TimeSpan.FromDays(14); // harmless fallback
             }
             try
             {
                 await SubscriptionAdmin.UpdateSubscriptionSettingsAsync(_connectionString!, topicName, subName, ttlToSet, req.DeadLetterOnExpiration);
             }
-            catch { /* best-effort settings apply */ }
+            catch (Exception ex)
+            {
+                Logger?.LogWarning(ex, "Failed to apply subscription settings for {TopicName}/{SubscriptionName}.", topicName, subName);
+            }
 
             // Apply advanced properties
             try
@@ -1053,7 +1065,10 @@
                     req.ForwardTo,
                     req.ForwardDeadLetteredMessagesTo);
             }
-            catch { /* ignore non-critical advanced property errors */ }
+            catch (Exception ex)
+            {
+                Logger?.LogWarning(ex, "Failed to apply subscription properties for {TopicName}/{SubscriptionName}.", topicName, subName);
+            }
 
             // Replace default rule with custom SQL if requested
             if (string.Equals(req.InitialRuleMode, "Sql", StringComparison.OrdinalIgnoreCase)
@@ -1062,11 +1077,16 @@
                 try
                 {
                     // Delete default match-all rule, then create SQL rule using the default name
-                    try { await SubscriptionRuleAdmin.DeleteSubscriptionRuleAsync(_connectionString!, topicName, subName, "$Default"); } catch { }
+                    try { await SubscriptionRuleAdmin.DeleteSubscriptionRuleAsync(_connectionString!, topicName, subName, "$Default"); }
+                    catch (Exception ex)
+                    {
+                        Logger?.LogWarning(ex, "Failed to delete default rule for {TopicName}/{SubscriptionName}.", topicName, subName);
+                    }
                     await SubscriptionRuleAdmin.CreateSubscriptionSqlRuleAsync(_connectionString!, topicName, subName, "$Default", req.InitialRuleSql!, req.InitialRuleSqlAction);
                 }
-                catch
+                catch (Exception ex)
                 {
+                    Logger?.LogWarning(ex, "Failed to apply initial SQL rule for {TopicName}/{SubscriptionName}.", topicName, subName);
                     Snackbar.Add("Created subscription, but failed to apply initial SQL rule.", Severity.Warning);
                 }
             }
@@ -1088,13 +1108,7 @@
         }
     }
 
-    private static bool TryParseTtlString(string? text, out TimeSpan ttl)
-    {
-        ttl = default;
-        if (string.IsNullOrWhiteSpace(text)) return false;
-        return TimeSpan.TryParse(text, System.Globalization.CultureInfo.InvariantCulture, out ttl)
-            || TimeSpan.TryParseExact(text, "c", System.Globalization.CultureInfo.InvariantCulture, out ttl);
-    }
+    private static bool TryParseTtlString(string? text, out TimeSpan ttl) => TimeSpanParser.TryParse(text, out ttl);
 
     private async Task CreateQueueAsync()
     {
@@ -1155,9 +1169,17 @@
             // Apply TTL
             var ttlToSet = TimeSpan.FromDays(14);
             if (TryParseTtlString(req.TtlText, out var parsedTtl)) ttlToSet = parsedTtl;
-            try { await TopicAdmin.UpdateTopicSettingsAsync(_connectionString!, name, ttlToSet); } catch { }
+            try { await TopicAdmin.UpdateTopicSettingsAsync(_connectionString!, name, ttlToSet); }
+            catch (Exception ex)
+            {
+                Logger?.LogWarning(ex, "Failed to apply topic settings for {TopicName}.", name);
+            }
             // Advanced
-            try { await TopicAdmin.UpdateTopicPropertiesAsync(_connectionString!, name, req.EnableBatchedOperations); } catch { }
+            try { await TopicAdmin.UpdateTopicPropertiesAsync(_connectionString!, name, req.EnableBatchedOperations); }
+            catch (Exception ex)
+            {
+                Logger?.LogWarning(ex, "Failed to apply topic properties for {TopicName}.", name);
+            }
             Snackbar.Add($"Topic '{name}' created.", Severity.Success);
             // Refresh and select
             _topics = await TopicAdmin.ListTopicsAsync(_connectionString!);

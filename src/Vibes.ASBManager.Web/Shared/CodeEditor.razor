@@ -3,6 +3,7 @@
 @using System.Text
 @inject ISnackbar Snackbar
 @inject IJSRuntime Js
+@inject ILogger<CodeEditor> Logger
 
 <MudStack Spacing="1">
     <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
@@ -102,9 +103,9 @@
             }
             await ValueChanged.InvokeAsync(_text);
         }
-        catch
+        catch (Exception ex)
         {
-            // ignore formatting errors
+            Logger?.LogDebug(ex, "Failed to format content.");
         }
     }
 
@@ -125,9 +126,9 @@
             }
             await ValueChanged.InvokeAsync(_text);
         }
-        catch
+        catch (Exception ex)
         {
-            // ignore minify errors
+            Logger?.LogDebug(ex, "Failed to minify content.");
         }
     }
 
@@ -139,8 +140,9 @@
             _text = Convert.ToBase64String(bytes);
             await ValueChanged.InvokeAsync(_text);
         }
-        catch
+        catch (Exception ex)
         {
+            Logger?.LogWarning(ex, "Failed to encode content as Base64.");
             Snackbar?.Add("Failed to encode as Base64.", Severity.Error);
         }
     }
@@ -160,8 +162,9 @@
             _text = Encoding.UTF8.GetString(bytes);
             await ValueChanged.InvokeAsync(_text);
         }
-        catch
+        catch (Exception ex)
         {
+            Logger?.LogWarning(ex, "Failed to decode Base64 content.");
             Snackbar?.Add("Invalid Base64 content.", Severity.Error);
         }
     }
@@ -179,8 +182,9 @@
             await Js.InvokeVoidAsync("navigator.clipboard.writeText", toCopy);
             Snackbar?.Add("Copied to clipboard.", Severity.Success);
         }
-        catch
+        catch (Exception ex)
         {
+            Logger?.LogWarning(ex, "Failed to copy content to clipboard.");
             Snackbar?.Add("Failed to copy.", Severity.Error);
         }
     }

@@ -13,7 +13,11 @@ builder.Services.AddMudServices();
 builder.Services.AddScoped<ProtectedLocalStorage>();
 
 var dataDir = Path.Combine(builder.Environment.ContentRootPath, "App_Data");
-try { Directory.CreateDirectory(dataDir); } catch { }
+try { Directory.CreateDirectory(dataDir); }
+catch (Exception ex)
+{
+    Console.Error.WriteLine($"Failed to create data directory '{dataDir}': {ex.Message}");
+}
 var jsonPath = Path.Combine(dataDir, "connections.json");
 
 builder.Services.AddFileStorage(jsonPath);

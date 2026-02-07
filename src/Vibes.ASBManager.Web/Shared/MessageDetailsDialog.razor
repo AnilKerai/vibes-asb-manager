@@ -2,6 +2,7 @@
 @using System.Text.Json
 @using System.Xml.Linq
 @using Vibes.ASBManager.Application.Interfaces.Messaging
+@inject ILogger<MessageDetailsDialog> Logger
 
 <MudDialog>
     <DialogContent>
@@ -224,7 +225,10 @@
                 return;
             }
         }
-        catch { /* ignore formatting issues */ }
+        catch (Exception ex)
+        {
+            Logger?.LogDebug(ex, "Failed to format message body for display.");
+        }
     }
 
     private bool LooksLikeJson(string s)
@@ -279,8 +283,9 @@
             await Js.InvokeVoidAsync("navigator.clipboard.writeText", json);
             Snackbar.Add("Application properties copied to clipboard.", Severity.Success);
         }
-        catch
+        catch (Exception ex)
         {
+            Logger?.LogWarning(ex, "Failed to copy application properties to clipboard.");
             Snackbar.Add("Failed to copy application properties.", Severity.Error);
         }
     }
@@ -293,8 +298,9 @@
             await Js.InvokeVoidAsync("navigator.clipboard.writeText", json);
             Snackbar.Add("System properties copied to clipboard.", Severity.Success);
         }
-        catch
+        catch (Exception ex)
         {
+            Logger?.LogWarning(ex, "Failed to copy system properties to clipboard.");
             Snackbar.Add("Failed to copy system properties.", Severity.Error);
         }
     }

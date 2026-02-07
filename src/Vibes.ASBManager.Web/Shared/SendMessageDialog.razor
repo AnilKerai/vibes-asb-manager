@@ -1,5 +1,6 @@
 @using Vibes.ASBManager.Web.Models
 @inject ISnackbar Snackbar
+@inject ILogger<SendMessageDialog> Logger
 <MudDialog>
     <TitleContent>@Title</TitleContent>
     <DialogContent>
@@ -35,8 +36,7 @@
         }
     </DialogContent>
     <DialogActions>
-        <MudButton OnClick="OnCancel" tabindex="8">Cancel</MudButton>
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Send" tabindex="9">Send</MudButton>
+        <DialogActionButtons SaveText="Send" CancelTabIndex="8" SaveTabIndex="9" OnCancel="OnCancel" OnSave="Send" />
     </DialogActions>
 </MudDialog>
 
@@ -118,8 +118,9 @@
                 Model.ScheduledEnqueueUtc = utc;
                 Snackbar.Add($"Scheduling for {local:G} (local)", Severity.Info);
             }
-            catch
+            catch (Exception ex)
             {
+                Logger?.LogDebug(ex, "Invalid schedule values while sending.");
                 Snackbar.Add("Invalid schedule values.", Severity.Error);
                 return;
             }
@@ -160,8 +161,9 @@
             var utc = new DateTimeOffset(local).ToUniversalTime();
             return $"Will schedule at {local:G} (local), {utc:u} UTC.";
         }
-        catch
+        catch (Exception ex)
         {
+            Logger?.LogDebug(ex, "Invalid schedule preview values.");
             return "Invalid schedule.";
         }
     }

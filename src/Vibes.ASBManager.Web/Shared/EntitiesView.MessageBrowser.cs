@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using MudBlazor;
 using Vibes.ASBManager.Application.Models;
 
@@ -62,8 +63,16 @@ public partial class EntitiesView
 
     private void StopSend()
     {
-        try { _sendCts?.Cancel(); } catch { }
-        try { _sendCts?.Dispose(); } catch { }
+        try { _sendCts?.Cancel(); }
+        catch (Exception ex)
+        {
+            Logger?.LogDebug(ex, "Failed to cancel send operation.");
+        }
+        try { _sendCts?.Dispose(); }
+        catch (Exception ex)
+        {
+            Logger?.LogDebug(ex, "Failed to dispose send cancellation token.");
+        }
         _sendCts = null;
     }
 
@@ -173,7 +182,11 @@ public partial class EntitiesView
             await RefreshActiveAsync();
             if (!_disposed)
             {
-                try { await InvokeAsync(StateHasChanged); } catch { }
+                try { await InvokeAsync(StateHasChanged); }
+                catch (Exception ex)
+                {
+                    Logger?.LogDebug(ex, "Failed to refresh UI after active refresh.");
+                }
             }
         }
     }
@@ -185,7 +198,11 @@ public partial class EntitiesView
             await RefreshDlqAsync();
             if (!_disposed)
             {
-                try { await InvokeAsync(StateHasChanged); } catch { }
+                try { await InvokeAsync(StateHasChanged); }
+                catch (Exception ex)
+                {
+                    Logger?.LogDebug(ex, "Failed to refresh UI after DLQ refresh.");
+                }
             }
         }
     }
@@ -236,7 +253,11 @@ public partial class EntitiesView
         {
             if (!_disposed)
             {
-                try { await InvokeAsync(StateHasChanged); } catch { }
+                try { await InvokeAsync(StateHasChanged); }
+                catch (Exception ex)
+                {
+                    Logger?.LogDebug(ex, "Failed to refresh UI after count refresh.");
+                }
             }
         }
     }
@@ -253,7 +274,11 @@ public partial class EntitiesView
         await RefreshActiveAsync();
         if (!_disposed)
         {
-            try { await InvokeAsync(StateHasChanged); } catch { }
+            try { await InvokeAsync(StateHasChanged); }
+            catch (Exception ex)
+            {
+                Logger?.LogDebug(ex, "Failed to refresh UI after active rewind.");
+            }
         }
     }
 
@@ -269,7 +294,11 @@ public partial class EntitiesView
         await RefreshDlqAsync();
         if (!_disposed)
         {
-            try { await InvokeAsync(StateHasChanged); } catch { }
+            try { await InvokeAsync(StateHasChanged); }
+            catch (Exception ex)
+            {
+                Logger?.LogDebug(ex, "Failed to refresh UI after DLQ rewind.");
+            }
         }
     }
 
@@ -334,8 +363,13 @@ public partial class EntitiesView
             {
                 await RefreshActiveAsync(token);
                 if (_disposed || token.IsCancellationRequested) break;
-                try { await InvokeAsync(StateHasChanged); } catch { }
-                try { await Task.Delay(1000, token); } catch { break; }
+                try { await InvokeAsync(StateHasChanged); }
+                catch (Exception ex)
+                {
+                    Logger?.LogDebug(ex, "Failed to refresh UI during live active polling.");
+                }
+                try { await Task.Delay(1000, token); }
+                catch (OperationCanceledException) { break; }
             }
         });
     }
@@ -343,8 +377,16 @@ public partial class EntitiesView
     private void StopLiveActive()
     {
         _liveActive = false;
-        try { _liveActiveCts?.Cancel(); } catch { }
-        try { _liveActiveCts?.Dispose(); } catch { }
+        try { _liveActiveCts?.Cancel(); }
+        catch (Exception ex)
+        {
+            Logger?.LogDebug(ex, "Failed to cancel live active polling.");
+        }
+        try { _liveActiveCts?.Dispose(); }
+        catch (Exception ex)
+        {
+            Logger?.LogDebug(ex, "Failed to dispose live active cancellation token.");
+        }
         _liveActiveCts = null;
     }
 
@@ -366,8 +408,13 @@ public partial class EntitiesView
             {
                 await RefreshDlqAsync(token);
                 if (_disposed || token.IsCancellationRequested) break;
-                try { await InvokeAsync(StateHasChanged); } catch { }
-                try { await Task.Delay(1000, token); } catch { break; }
+                try { await InvokeAsync(StateHasChanged); }
+                catch (Exception ex)
+                {
+                    Logger?.LogDebug(ex, "Failed to refresh UI during live DLQ polling.");
+                }
+                try { await Task.Delay(1000, token); }
+                catch (OperationCanceledException) { break; }
             }
         });
     }
@@ -375,8 +422,16 @@ public partial class EntitiesView
     private void StopLiveDlq()
     {
         _liveDlq = false;
-        try { _liveDlqCts?.Cancel(); } catch { }
-        try { _liveDlqCts?.Dispose(); } catch { }
+        try { _liveDlqCts?.Cancel(); }
+        catch (Exception ex)
+        {
+            Logger?.LogDebug(ex, "Failed to cancel live DLQ polling.");
+        }
+        try { _liveDlqCts?.Dispose(); }
+        catch (Exception ex)
+        {
+            Logger?.LogDebug(ex, "Failed to dispose live DLQ cancellation token.");
+        }
         _liveDlqCts = null;
     }
 
@@ -391,15 +446,24 @@ public partial class EntitiesView
             while (!token.IsCancellationRequested && !_disposed)
             {
                 await RefreshCountsAsync(token);
-                try { await Task.Delay(CountsRefreshIntervalMs, token); } catch { break; }
+                try { await Task.Delay(CountsRefreshIntervalMs, token); }
+                catch (OperationCanceledException) { break; }
             }
         });
     }
 
     private void StopCountsPolling()
     {
-        try { _countsCts?.Cancel(); } catch { }
-        try { _countsCts?.Dispose(); } catch { }
+        try { _countsCts?.Cancel(); }
+        catch (Exception ex)
+        {
+            Logger?.LogDebug(ex, "Failed to cancel counts polling.");
+        }
+        try { _countsCts?.Dispose(); }
+        catch (Exception ex)
+        {
+            Logger?.LogDebug(ex, "Failed to dispose counts polling cancellation token.");
+        }
         _countsCts = null;
     }
 
