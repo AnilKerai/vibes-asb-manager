@@ -1,15 +1,19 @@
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using Azure.Messaging.ServiceBus;
+using Microsoft.Extensions.Logging;
 using Vibes.ASBManager.Application.Interfaces.Messaging;
 using Vibes.ASBManager.Application.Models;
 
 namespace Vibes.ASBManager.Infrastructure.AzureServiceBus.ServiceBus;
 
 [ExcludeFromCodeCoverage]
-public sealed class AzureServiceBusMessaging : IMessageBrowser, IMessageSender, IMessageMaintenance, IDeadLetterMaintenance, IAsyncDisposable
+public sealed class AzureServiceBusMessaging(
+    ILogger<AzureServiceBusMessaging> logger
+) : IMessageBrowser, IMessageSender, IMessageMaintenance, IDeadLetterMaintenance, IAsyncDisposable
 {
     private readonly ConcurrentDictionary<string, ServiceBusClient> _clients = new(StringComparer.Ordinal);
+    private readonly ILogger<AzureServiceBusMessaging> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
     private ServiceBusClient GetClient(string connectionString)
         => _clients.GetOrAdd(connectionString, static cs => new ServiceBusClient(cs));
@@ -383,7 +387,7 @@ public sealed class AzureServiceBusMessaging : IMessageBrowser, IMessageSender, 
         return await RemoveFromReceiverBySequenceAsync(receiver, sequenceNumber, cancellationToken).ConfigureAwait(false);
     }
 
-    private static async Task<bool> RemoveFromReceiverBySequenceAsync(ServiceBusReceiver receiver, long sequenceNumber, CancellationToken cancellationToken)
+    private async Task<bool> RemoveFromReceiverBySequenceAsync(ServiceBusReceiver receiver, long sequenceNumber, CancellationToken cancellationToken)
     {
         const int maxMessagesToScan = 200;
         var scannedCount = 0;
@@ -403,7 +407,14 @@ public sealed class AzureServiceBusMessaging : IMessageBrowser, IMessageSender, 
                     {
                         if (otherMessage != message)
                         {
-                            try { await receiver.AbandonMessageAsync(otherMessage, cancellationToken: cancellationToken).ConfigureAwait(false); } catch { }
+                            try
+                            {
+                                await receiver.AbandonMessageAsync(otherMessage, cancellationToken: cancellationToken).ConfigureAwait(false);
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogWarning(ex, "Failed to abandon dead-letter message {SequenceNumber}", otherMessage.SequenceNumber);
+                            }
                         }
                     }
                     return true;
@@ -412,7 +423,14 @@ public sealed class AzureServiceBusMessaging : IMessageBrowser, IMessageSender, 
 
             foreach (var messageToAbandon in receivedMessages)
             {
-                try { await receiver.AbandonMessageAsync(messageToAbandon, cancellationToken: cancellationToken).ConfigureAwait(false); } catch { }
+                try
+                {
+                    await receiver.AbandonMessageAsync(messageToAbandon, cancellationToken: cancellationToken).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to abandon dead-letter message {SequenceNumber}", messageToAbandon.SequenceNumber);
+                }
             }
             scannedCount += receivedMessages.Count;
         }

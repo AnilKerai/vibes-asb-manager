@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Vibes.ASBManager.Application.Interfaces.Connection;
 using Vibes.ASBManager.Domain.Models;
@@ -10,13 +11,15 @@ namespace Vibes.ASBManager.Infrastructure.Storage.File.Storage;
 
 public sealed class JsonConnectionStore(
     IOptionsMonitor<JsonFileStorageOptions> storeOptions, 
-    IFileSystem fileSystem
+    IFileSystem fileSystem,
+    ILogger<JsonConnectionStore> logger
 ) : IConnectionStore
 {
     private readonly string _filePath = string.IsNullOrWhiteSpace(storeOptions.CurrentValue.FilePath)
         ? throw new ArgumentException("JsonFileStorageOptions.FilePath must be provided", nameof(storeOptions))
         : storeOptions.CurrentValue.FilePath;
     private readonly IFileSystem _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
+    private readonly ILogger<JsonConnectionStore> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     private readonly SemaphoreSlim _semaphore = new(1, 1);
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
@@ -113,8 +116,9 @@ public sealed class JsonConnectionStore(
             var data = await JsonSerializer.DeserializeAsync<List<ConnectionInfo>>(readStream, SerializerOptions, ct).ConfigureAwait(false);
             return data ?? new List<ConnectionInfo>();
         }
-        catch
+        catch (Exception ex)
         {
+            _logger.LogWarning(ex, "Failed to read connections from {FilePath}", _filePath);
             return new List<ConnectionInfo>();
         }
     }

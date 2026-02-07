@@ -379,16 +379,6 @@
         }
     }
 
-    
-
-    
-
-    
-
-    
-
-    
-
     private async Task OpenSendToQueue(string queueName)
     {
         if (string.IsNullOrWhiteSpace(_connectionString)) return;
@@ -396,7 +386,7 @@
         await OpenSendDialogAsync(
             title: $"Send to queue '{queueName}'",
             targetName: queueName,
-            sendAsync: (req, contentType, scheduled) => MessageSender.SendToQueueAsync(
+            sendAsync: (req, contentType, scheduled, cancellationToken) => MessageSender.SendToQueueAsync(
                 connectionString: connectionString,
                 queueName: queueName,
                 body: req.Body,
@@ -405,7 +395,8 @@
                 properties: req.Properties,
                 contentType: contentType,
                 messageId: null,
-                scheduledEnqueueTime: scheduled));
+                scheduledEnqueueTime: scheduled,
+                cancellationToken: cancellationToken));
     }
 
     private async Task OpenSendToTopic(string topicName)
@@ -415,7 +406,7 @@
         await OpenSendDialogAsync(
             title: $"Send to topic '{topicName}'",
             targetName: topicName,
-            sendAsync: (req, contentType, scheduled) => MessageSender.SendToTopicAsync(
+            sendAsync: (req, contentType, scheduled, cancellationToken) => MessageSender.SendToTopicAsync(
                 connectionString: connectionString,
                 topicName: topicName,
                 body: req.Body,
@@ -424,10 +415,11 @@
                 properties: req.Properties,
                 contentType: contentType,
                 messageId: null,
-                scheduledEnqueueTime: scheduled));
+                scheduledEnqueueTime: scheduled,
+                cancellationToken: cancellationToken));
     }
 
-    private async Task OpenSendDialogAsync(string title, string targetName, Func<SendMessageRequest, string?, DateTimeOffset?, Task> sendAsync)
+    private async Task OpenSendDialogAsync(string title, string targetName, Func<SendMessageRequest, string?, DateTimeOffset?, CancellationToken, Task> sendAsync)
     {
         var parameters = new DialogParameters
         {
@@ -442,32 +434,38 @@
         }
     }
 
-    private async Task SendMessagesAsync(string targetName, SendMessageRequest req, Func<SendMessageRequest, string?, DateTimeOffset?, Task> sendAsync)
+    private async Task SendMessagesAsync(string targetName, SendMessageRequest req, Func<SendMessageRequest, string?, DateTimeOffset?, CancellationToken, Task> sendAsync)
     {
         var count = req.Count < 1 ? 1 : req.Count;
         var contentType = string.IsNullOrWhiteSpace(req.ContentType) ? null : req.ContentType;
         var startVerb = req.ScheduledEnqueueUtc.HasValue ? "Scheduling" : "Sending";
         Snackbar.Add(count == 1 ? $"{startVerb} 1 message to {targetName}..." : $"{startVerb} {count} messages to {targetName}...", Severity.Info);
+        var token = StartSendCancellation();
         _ = Task.Run(async () =>
         {
             var sent = 0;
             Exception? error = null;
+            var cancelled = false;
             try
             {
-                for (var i = 0; i < count; i++)
+                for (var i = 0; i < count && !token.IsCancellationRequested; i++)
                 {
                     var sched = req.ScheduledEnqueueUtc;
                     if (sched.HasValue && req.IntervalSeconds > 0)
                     {
                         sched = sched.Value.AddSeconds(req.IntervalSeconds * i);
                     }
-                    await sendAsync(req, contentType, sched);
+                    await sendAsync(req, contentType, sched, token);
                     sent++;
                     if (!req.ScheduledEnqueueUtc.HasValue && req.IntervalSeconds > 0 && i < count - 1)
                     {
-                        try { await Task.Delay(TimeSpan.FromSeconds(req.IntervalSeconds)); } catch { }
+                        try { await Task.Delay(TimeSpan.FromSeconds(req.IntervalSeconds), token); } catch { }
                     }
                 }
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                cancelled = true;
             }
             catch (Exception ex)
             {
@@ -475,29 +473,39 @@
             }
             finally
             {
-                var endVerb = req.ScheduledEnqueueUtc.HasValue ? "Scheduled" : "Sent";
-                await InvokeAsync(() =>
+                if (!_disposed)
                 {
-                    if (error is null)
+                    var endVerb = req.ScheduledEnqueueUtc.HasValue ? "Scheduled" : "Sent";
+                    await InvokeAsync(() =>
                     {
-                        Snackbar.Add(sent == 1 ? $"{endVerb} 1 message to {targetName}." : $"{endVerb} {sent} messages to {targetName}.", Severity.Success);
-                    }
-                    else
-                    {
-                        if (sent > 0)
-                            Snackbar.Add($"Sent {sent} messages before failure: {error.Message}", Severity.Warning);
+                        if (cancelled)
+                        {
+                            Snackbar.Add(sent > 0
+                                ? $"Send cancelled after {sent} message(s) to {targetName}."
+                                : $"Send cancelled for {targetName}.", Severity.Info);
+                            return;
+                        }
+                        if (error is null)
+                        {
+                            Snackbar.Add(sent == 1 ? $"{endVerb} 1 message to {targetName}." : $"{endVerb} {sent} messages to {targetName}.", Severity.Success);
+                        }
                         else
-                            Snackbar.Add($"Failed to send: {error.Message}", Severity.Error);
+                        {
+                            if (sent > 0)
+                                Snackbar.Add($"Sent {sent} messages before failure: {error.Message}", Severity.Warning);
+                            else
+                                Snackbar.Add($"Failed to send: {error.Message}", Severity.Error);
+                        }
+                    });
+                    if (CanRefreshMessages && sent > 0)
+                    {
+                        await RefreshActiveAsync();
+                        await RefreshCountsAsync();
+                        try { await InvokeAsync(StateHasChanged); } catch { }
                     }
-                });
-                if (CanRefreshMessages)
-                {
-                    await RefreshActiveAsync();
-                    await RefreshCountsAsync();
-                    try { await InvokeAsync(StateHasChanged); } catch { }
                 }
             }
-        });
+        }, token);
     }
 
     private async Task ConfirmPurgeQueue(string queueName)

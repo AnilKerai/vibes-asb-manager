@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using Azure;
 using Azure.Messaging.ServiceBus.Administration;
+using Microsoft.Extensions.Logging;
 using Vibes.ASBManager.Application.Interfaces.Admin;
 using Vibes.ASBManager.Application.Models;
 
@@ -9,10 +10,12 @@ namespace Vibes.ASBManager.Infrastructure.AzureServiceBus.ServiceBus;
 
 [ExcludeFromCodeCoverage]
 public sealed class AzureServiceBusAdmin(
-    IRuleFormatter ruleFormatter
+    IRuleFormatter ruleFormatter,
+    ILogger<AzureServiceBusAdmin> logger
 ) : IQueueAdmin, ITopicAdmin, ISubscriptionAdmin, ISubscriptionRuleAdmin
 {
     private readonly ConcurrentDictionary<string, ServiceBusAdministrationClient> _clients = new(StringComparer.Ordinal);
+    private readonly ILogger<AzureServiceBusAdmin> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
     private ServiceBusAdministrationClient GetClient(string connectionString)
         => _clients.GetOrAdd(connectionString, static cs => new ServiceBusAdministrationClient(cs));
@@ -86,6 +89,7 @@ public sealed class AzureServiceBusAdmin(
             }
             catch (RequestFailedException)
             {
+                _logger.LogWarning("Failed to load scheduled message count for topic {TopicName}", topic.Name);
             }
             topicSummaries.Add(new TopicSummary { Name = topic.Name, SubscriptionCount = subscriptionCount, ScheduledMessageCount = scheduledMessageCount });
         }
@@ -123,6 +127,7 @@ public sealed class AzureServiceBusAdmin(
         }
         catch (RequestFailedException)
         {
+            _logger.LogWarning("Failed to load runtime properties for queue {QueueName}", queueName);
             return null;
         }
     }
@@ -160,6 +165,7 @@ public sealed class AzureServiceBusAdmin(
         }
         catch (RequestFailedException)
         {
+            _logger.LogWarning("Failed to load runtime properties for subscription {TopicName}/{SubscriptionName}", topicName, subscriptionName);
             return null;
         }
     }
