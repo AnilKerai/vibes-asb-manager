@@ -573,8 +573,8 @@
                     });
                     if (CanRefreshMessages && sent > 0)
                     {
-                        await RefreshActiveAsync();
-                        await RefreshCountsAsync();
+                        await RefreshActiveAsync(token);
+                        await RefreshCountsAsync(token);
                         try { await InvokeAsync(StateHasChanged); }
                         catch (Exception ex)
                         {

@@ -22,6 +22,7 @@
     <ItemGroup>
         <ProjectReference Include="..\..\src\Vibes.ASBManager.Infrastructure.Storage.File\Vibes.ASBManager.Infrastructure.Storage.File.csproj" />
         <ProjectReference Include="..\..\src\Vibes.ASBManager.Infrastructure.AzureServiceBus\Vibes.ASBManager.Infrastructure.AzureServiceBus.csproj" />
+        <ProjectReference Include="..\..\src\Vibes.ASBManager.Web\Vibes.ASBManager.Web.csproj" />
     </ItemGroup>
 
 </Project>
