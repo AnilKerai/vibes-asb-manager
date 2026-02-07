@@ -79,96 +79,34 @@
                 OnDeleteSubscription="@DeleteSelectedSubscriptionAsync"
                 OnToggleLive="@ToggleLiveBothAsync" />
 
-            <MudPaper Class="pa-3" Elevation="1">
-                <MudText Typo="Typo.h6">Settings</MudText>
-                <MudText Typo="Typo.caption" Class="mb-2">Edit Time to Live and message expiry options for the selected entity.</MudText>
-
-                @if (string.IsNullOrEmpty(_selectedTreeValue) || (!SelectedIsQueue && !SelectedIsTopic && !SelectedIsSubscription))
-                {
-                    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">Select a queue, topic, or subscription from the tree to edit settings.</MudAlert>
-                }
-                else
-                {
-                    @if (_settingsLoading)
-                    {
-                        <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
-                    }
-                    <MudGrid Class="mt-2">
-                        <MudItem xs="12" md="6">
-                            <MudTextField T="string" Label="Entity" Value="@SelectedFriendly" ReadOnly="true" />
-                        </MudItem>
-                        <MudItem xs="12" md="6">
-                            <MudTextField T="string" @bind-Value="_ttlText" Label="Default Message TTL (d.hh:mm:ss)" Placeholder="1.00:00:00" Immediate="true" />
-                            <MudText Typo="Typo.caption">Use d.hh:mm:ss (supports days), e.g., 1.00:00:00 for 1 day. Full TimeSpan format also accepted.</MudText>
-                        </MudItem>
-                        @if (SelectedIsQueue || SelectedIsSubscription)
-                        {
-                            <MudItem xs="12" md="6">
-                                <MudSwitch T="bool" @bind-Value="_deadLetterOnExpiration">Dead-letter on message expiration</MudSwitch>
-                            </MudItem>
-                        }
-                    </MudGrid>
-
-                    <MudExpansionPanels Elevation="0" Class="mt-2">
-                        <MudExpansionPanel Text="Advanced Settings">
-                            <MudGrid Class="mt-1">
-                                @if (SelectedIsQueue)
-                                {
-                                    <MudItem xs="12" md="6">
-                                        <MudTextField T="string" @bind-Value="_lockDurationText" Label="Lock Duration (d.hh:mm:ss)" Placeholder="00:01:00" Immediate="true" />
-                                        <MudText Typo="Typo.caption">Use d.hh:mm:ss (e.g., 00:01:00 for 1 minute).</MudText>
-                                    </MudItem>
-                                    <MudItem xs="12" md="6">
-                                        <MudNumericField T="int" @bind-Value="_maxDeliveryCount" Label="Max Delivery Count" Min="1" Immediate="true" />
-                                    </MudItem>
-                                    <MudItem xs="12" md="6">
-                                        <MudSwitch T="bool" @bind-Value="_enableBatchedOperations">Enable Batched Operations</MudSwitch>
-                                    </MudItem>
-                                    <MudItem xs="12" md="6">
-                                        <MudTextField T="string" @bind-Value="_forwardTo" Label="Forward To" Immediate="true" />
-                                    </MudItem>
-                                    <MudItem xs="12" md="6">
-                                        <MudTextField T="string" @bind-Value="_forwardDeadLetteredTo" Label="Forward Dead-lettered To" Immediate="true" />
-                                    </MudItem>
-                                }
-                                else if (SelectedIsTopic)
-                                {
-                                    <MudItem xs="12" md="6">
-                                        <MudSwitch T="bool" @bind-Value="_enableBatchedOperations">Enable Batched Operations</MudSwitch>
-                                    </MudItem>
-                                }
-                                else if (SelectedIsSubscription)
-                                {
-                                    <MudItem xs="12" md="6">
-                                        <MudSwitch T="bool" @bind-Value="_requiresSession">Requires Session</MudSwitch>
-                                    </MudItem>
-                                    <MudItem xs="12" md="6">
-                                        <MudTextField T="string" @bind-Value="_lockDurationText" Label="Lock Duration (d.hh:mm:ss)" Placeholder="00:01:00" Immediate="true" />
-                                        <MudText Typo="Typo.caption">Use d.hh:mm:ss (e.g., 00:01:00 for 1 minute).</MudText>
-                                    </MudItem>
-                                    <MudItem xs="12" md="6">
-                                        <MudNumericField T="int" @bind-Value="_maxDeliveryCount" Label="Max Delivery Count" Min="1" Immediate="true" />
-                                    </MudItem>
-                                    <MudItem xs="12" md="6">
-                                        <MudSwitch T="bool" @bind-Value="_enableBatchedOperations">Enable Batched Operations</MudSwitch>
-                                    </MudItem>
-                                    <MudItem xs="12" md="6">
-                                        <MudTextField T="string" @bind-Value="_forwardTo" Label="Forward To" Immediate="true" />
-                                    </MudItem>
-                                    <MudItem xs="12" md="6">
-                                        <MudTextField T="string" @bind-Value="_forwardDeadLetteredTo" Label="Forward Dead-lettered To" Immediate="true" />
-                                    </MudItem>
-                                }
-                            </MudGrid>
-                        </MudExpansionPanel>
-                    </MudExpansionPanels>
-
-                    <div class="mt-3">
-                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!CanSaveSettings)" OnClick="@SaveSettingsAsync">Save</MudButton>
-                        <MudButton Class="ml-2" Variant="Variant.Outlined" Disabled="@(_settingsLoading || _settingsSaving)" OnClick="@ReloadSettingsAsync">Reset</MudButton>
-                    </div>
-                }
-            </MudPaper>
+            <EntitySettingsPanel
+                IsSelectionValid="@(!string.IsNullOrEmpty(_selectedTreeValue) && (SelectedIsQueue || SelectedIsTopic || SelectedIsSubscription))"
+                SelectedFriendly="@SelectedFriendly"
+                TtlText="@_ttlText"
+                TtlTextChanged="@((string value) => _ttlText = value)"
+                DeadLetterOnExpiration="@_deadLetterOnExpiration"
+                DeadLetterOnExpirationChanged="@((bool value) => _deadLetterOnExpiration = value)"
+                ShowDeadLetterOnExpiration="@(SelectedIsQueue || SelectedIsSubscription)"
+                SelectedIsQueue="@SelectedIsQueue"
+                SelectedIsTopic="@SelectedIsTopic"
+                SelectedIsSubscription="@SelectedIsSubscription"
+                LockDurationText="@_lockDurationText"
+                LockDurationTextChanged="@((string value) => _lockDurationText = value)"
+                MaxDeliveryCount="@_maxDeliveryCount"
+                MaxDeliveryCountChanged="@((int value) => _maxDeliveryCount = value)"
+                EnableBatchedOperations="@_enableBatchedOperations"
+                EnableBatchedOperationsChanged="@((bool value) => _enableBatchedOperations = value)"
+                ForwardTo="@_forwardTo"
+                ForwardToChanged="@((string? value) => _forwardTo = value)"
+                ForwardDeadLetteredTo="@_forwardDeadLetteredTo"
+                ForwardDeadLetteredToChanged="@((string? value) => _forwardDeadLetteredTo = value)"
+                RequiresSession="@_requiresSession"
+                RequiresSessionChanged="@((bool value) => _requiresSession = value)"
+                SettingsLoading="@_settingsLoading"
+                SettingsSaving="@_settingsSaving"
+                CanSave="@CanSaveSettings"
+                OnSave="@SaveSettingsAsync"
+                OnReset="@ReloadSettingsAsync" />
 
             @if (SelectedIsSubscription)
             {
@@ -208,21 +146,16 @@
                 </MudPaper>
             }
 
-            <ActiveMessagesTable
-                Items="_activeMessages"
+            <MessageBrowserPanel
+                ActiveItems="@_activeMessages"
+                DlqItems="@_dlqMessages"
                 CanRefresh="@CanRefreshMessages"
-                OnRefresh="@OnActiveRefresh"
-
-                Count="@_activeCount"
-                OnRowClick="@OnActiveRowClick" />
-
-            <DlqMessagesTable
-                Items="_dlqMessages"
-                CanRefresh="@CanRefreshMessages"
-                OnRefresh="@OnDlqRefresh"
-
-                Count="@_dlqCount"
-                OnRowClick="@OnDlqRowClick" />
+                ActiveCount="@_activeCount"
+                DlqCount="@_dlqCount"
+                OnActiveRefresh="@OnActiveRefresh"
+                OnDlqRefresh="@OnDlqRefresh"
+                OnActiveRowClick="@OnActiveRowClick"
+                OnDlqRowClick="@OnDlqRowClick" />
         </MudItem>
     </MudGrid>
 }
