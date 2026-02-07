@@ -5,6 +5,7 @@ namespace Vibes.ASBManager.Application.Interfaces.Admin;
 public interface IQueueAdmin
 {
     Task<IReadOnlyList<QueueSummary>> ListQueuesAsync(string connectionString, CancellationToken cancellationToken = default);
+    Task<QueueSummary?> GetQueueRuntimeAsync(string connectionString, string queueName, CancellationToken cancellationToken = default);
     Task CreateQueueAsync(
         string connectionString,
         string queueName,

@@ -8,7 +8,6 @@
 @inject IDeadLetterMaintenance DeadLetterMaintenance
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
-@using System.Threading
 @using Vibes.ASBManager.Application.Interfaces.Admin
 @using Vibes.ASBManager.Application.Interfaces.Messaging
 @using Vibes.ASBManager.Web.Models
@@ -457,7 +456,7 @@
             {
                 for (var i = 0; i < count; i++)
                 {
-                    DateTimeOffset? sched = req.ScheduledEnqueueUtc;
+                    var sched = req.ScheduledEnqueueUtc;
                     if (sched.HasValue && req.IntervalSeconds > 0)
                     {
                         sched = sched.Value.AddSeconds(req.IntervalSeconds * i);
@@ -1008,7 +1007,7 @@
             try
             {
                 // Parse lock duration; fallback to 1 minute
-                TimeSpan lockDuration = TimeSpan.FromMinutes(1);
+                var lockDuration = TimeSpan.FromMinutes(1);
                 if (TryParseTtlString(req.LockDurationText, out var parsedLock))
                     lockDuration = parsedLock;
                 await SubscriptionAdmin.UpdateSubscriptionPropertiesAsync(
@@ -1080,7 +1079,7 @@
             // Parse TTL and LockDuration
             TimeSpan? ttlOpt = null;
             if (TryParseTtlString(req.TtlText, out var parsedTtl)) ttlOpt = parsedTtl;
-            TimeSpan lockDuration = TimeSpan.FromMinutes(1);
+            var lockDuration = TimeSpan.FromMinutes(1);
             if (TryParseTtlString(req.LockDurationText, out var parsedLock)) lockDuration = parsedLock;
 
             await QueueAdmin.CreateQueueAsync(
@@ -1122,7 +1121,7 @@
         {
             await TopicAdmin.CreateTopicAsync(_connectionString!, name);
             // Apply TTL
-            TimeSpan ttlToSet = TimeSpan.FromDays(14);
+            var ttlToSet = TimeSpan.FromDays(14);
             if (TryParseTtlString(req.TtlText, out var parsedTtl)) ttlToSet = parsedTtl;
             try { await TopicAdmin.UpdateTopicSettingsAsync(_connectionString!, name, ttlToSet); } catch { }
             // Advanced
