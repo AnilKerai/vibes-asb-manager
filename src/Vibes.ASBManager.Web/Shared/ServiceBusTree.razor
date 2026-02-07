@@ -5,7 +5,7 @@
         {
             foreach (var q in Queues)
             {
-                <MudTreeViewItem T="string" Text="@q.Name" Value="@($"queue:{q.Name}")" Icon="@Icons.Material.Filled.Inbox" />
+                <MudTreeViewItem T="string" Text="@FormatQueueText(q)" Value="@($"queue:{q.Name}")" Icon="@Icons.Material.Filled.Inbox" />
             }
         }
     </MudTreeViewItem>
@@ -14,12 +14,15 @@
         {
             foreach (var t in Topics)
             {
-                <MudTreeViewItem T="string" Text="@t.Name" Value="@($"topic:{t.Name}")" Icon="@Icons.Material.Filled.Topic" Expanded="@ExpandedTopicNames.Contains(t.Name)">
+                var subs = TopicSubscriptions.TryGetValue(t.Name, out var subscriptionSummaries)
+                    ? subscriptionSummaries
+                    : Array.Empty<SubscriptionSummary>();
+                <MudTreeViewItem T="string" Text="@FormatTopicText(t, subs)" Value="@($"topic:{t.Name}")" Icon="@Icons.Material.Filled.Topic" Expanded="@ExpandedTopicNames.Contains(t.Name)">
                     @if (TopicSubscriptions.TryGetValue(t.Name, out var subs) && subs is not null)
                     {
                         foreach (var s in subs)
                         {
-                            <MudTreeViewItem T="string" Text="@s.SubscriptionName" Value="@($"subscription:{t.Name}/{s.SubscriptionName}")" Icon="@Icons.Material.Filled.Mail" />
+                            <MudTreeViewItem T="string" Text="@FormatSubscriptionText(s)" Value="@($"subscription:{t.Name}/{s.SubscriptionName}")" Icon="@Icons.Material.Filled.Mail" />
                         }
                     }
                 </MudTreeViewItem>
@@ -41,4 +44,22 @@
     [Parameter] public HashSet<string> ExpandedTopicNames { get; set; } = new();
 
     private Task OnSelectedChanged(string? value) => SelectedValueChanged.InvokeAsync(value);
+
+    private static string FormatQueueText(QueueSummary queue)
+        => $"{queue.Name} (A:{FormatCount(queue.ActiveMessageCount)} DLQ:{FormatCount(queue.DeadLetterMessageCount)})";
+
+    private static string FormatTopicText(TopicSummary topic, IReadOnlyList<SubscriptionSummary> subscriptions)
+    {
+        var subscriptionCount = subscriptions.Count;
+        var activeTotal = subscriptions.Sum(subscription => subscription.ActiveMessageCount);
+        var dlqTotal = subscriptions.Sum(subscription => subscription.DeadLetterMessageCount);
+        return $"{topic.Name} (Subs:{FormatCount(subscriptionCount)} A:{FormatCount(activeTotal)} DLQ:{FormatCount(dlqTotal)} Sch:{FormatCount(topic.ScheduledMessageCount)})";
+    }
+
+    private static string FormatSubscriptionText(SubscriptionSummary subscription)
+        => $"{subscription.SubscriptionName} (A:{FormatCount(subscription.ActiveMessageCount)} DLQ:{FormatCount(subscription.DeadLetterMessageCount)})";
+
+    private static string FormatCount(long count) => count.ToString("N0");
+
+    private static string FormatCount(int count) => count.ToString("N0");
 }
