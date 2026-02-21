@@ -76,11 +76,6 @@ public sealed class AzureServiceBusAdmin(
         var topicSummaries = new List<TopicSummary>();
         await foreach (var topic in client.GetTopicsAsync(cancellationToken))
         {
-            var subscriptionCount = 0;
-            await foreach (var _ in client.GetSubscriptionsAsync(topic.Name, cancellationToken))
-            {
-                subscriptionCount++;
-            }
             long scheduledMessageCount = 0;
             try
             {
@@ -91,7 +86,7 @@ public sealed class AzureServiceBusAdmin(
             {
                 _logger.LogWarning("Failed to load scheduled message count for topic {TopicName}", topic.Name);
             }
-            topicSummaries.Add(new TopicSummary { Name = topic.Name, SubscriptionCount = subscriptionCount, ScheduledMessageCount = scheduledMessageCount });
+            topicSummaries.Add(new TopicSummary { Name = topic.Name, SubscriptionCount = 0, ScheduledMessageCount = scheduledMessageCount });
         }
         return topicSummaries.OrderBy(topic => topic.Name).ToList();
     }
