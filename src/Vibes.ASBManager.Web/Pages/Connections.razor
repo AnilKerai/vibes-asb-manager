@@ -53,6 +53,7 @@
     protected override async Task OnInitializedAsync()
     {
         _connections = await ConnectionStore.GetAllAsync();
+        PruneOpenConnections();
         await SelectConnectionFromQueryAsync();
     }
 
@@ -75,6 +76,7 @@
                 Logger?.LogWarning(ex, "Failed to reload connections for query selection.");
             }
         }
+        PruneOpenConnections();
 
         var conn = _connections?.FirstOrDefault(c => string.Equals(c.Id, ConnectionId, StringComparison.OrdinalIgnoreCase));
         if (conn is not null)
@@ -128,6 +130,34 @@
             Logger?.LogDebug(ex, "Failed to update URL for connection {ConnectionId}.", conn.Id);
         }
         StateHasChanged();
+    }
+
+    private void PruneOpenConnections()
+    {
+        if (_connections is null || _openConnections.Count == 0) return;
+        var ids = _connections.Select(c => c.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var removed = _openConnections.RemoveAll(c => !ids.Contains(c.Id));
+        if (removed == 0) return;
+
+        if (_openConnections.Count == 0)
+        {
+            _activeTabIndex = 0;
+            try { Nav.NavigateTo("/", replace: true); }
+            catch (Exception ex)
+            {
+                Logger?.LogDebug(ex, "Failed to clear URL after pruning tabs.");
+            }
+            return;
+        }
+
+        if (_activeTabIndex >= _openConnections.Count)
+            _activeTabIndex = _openConnections.Count - 1;
+        var activeId = _openConnections[_activeTabIndex].Id;
+        try { Nav.NavigateTo($"/?connectionId={activeId}", replace: true); }
+        catch (Exception ex)
+        {
+            Logger?.LogDebug(ex, "Failed to update URL after pruning tabs.");
+        }
     }
 
     private void OnConnectionRowClick(TableRowClickEventArgs<ConnectionInfo> args)
