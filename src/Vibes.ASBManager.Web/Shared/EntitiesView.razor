@@ -951,8 +951,6 @@
             _settingsSaving = true;
             if (TryGetQueue(out var q))
             {
-                await QueueAdmin.UpdateQueueSettingsAsync(_connectionString!, q, ttl, _deadLetterOnExpiration);
-                // Advanced properties
                 if (!TryParseTtlString(_lockDurationText, out var lockDuration))
                 {
                     Snackbar.Add("Invalid Lock Duration. Use d.hh:mm:ss (e.g., 00:01:00).", Severity.Warning);
@@ -961,6 +959,8 @@
                 var sanitizedMaxDelivery = Math.Max(1, _maxDeliveryCount);
                 var forwardTo = string.IsNullOrWhiteSpace(_forwardTo) ? null : _forwardTo.Trim();
                 var forwardDeadLetteredTo = string.IsNullOrWhiteSpace(_forwardDeadLetteredTo) ? null : _forwardDeadLetteredTo.Trim();
+                await QueueAdmin.UpdateQueueSettingsAsync(_connectionString!, q, ttl, _deadLetterOnExpiration);
+                // Advanced properties
                 await QueueAdmin.UpdateQueuePropertiesAsync(
                     _connectionString!,
                     q,
@@ -978,8 +978,6 @@
             }
             else if (TryGetSubscription(out var topic, out var sub))
             {
-                await SubscriptionAdmin.UpdateSubscriptionSettingsAsync(_connectionString!, topic, sub, ttl, _deadLetterOnExpiration);
-                // Advanced properties
                 if (!TryParseTtlString(_lockDurationText, out var lockDuration))
                 {
                     Snackbar.Add("Invalid Lock Duration. Use d.hh:mm:ss (e.g., 00:01:00).", Severity.Warning);
@@ -988,6 +986,8 @@
                 var sanitizedMaxDelivery = Math.Max(1, _maxDeliveryCount);
                 var forwardTo = string.IsNullOrWhiteSpace(_forwardTo) ? null : _forwardTo.Trim();
                 var forwardDeadLetteredTo = string.IsNullOrWhiteSpace(_forwardDeadLetteredTo) ? null : _forwardDeadLetteredTo.Trim();
+                await SubscriptionAdmin.UpdateSubscriptionSettingsAsync(_connectionString!, topic, sub, ttl, _deadLetterOnExpiration);
+                // Advanced properties
                 await SubscriptionAdmin.UpdateSubscriptionPropertiesAsync(
                     _connectionString!,
                     topic,
@@ -1104,8 +1104,8 @@
                     lockDuration,
                     Math.Max(1, req.MaxDeliveryCount),
                     req.EnableBatchedOperations,
-                    req.ForwardTo,
-                    req.ForwardDeadLetteredMessagesTo);
+                    string.IsNullOrWhiteSpace(req.ForwardTo) ? null : req.ForwardTo.Trim(),
+                    string.IsNullOrWhiteSpace(req.ForwardDeadLetteredMessagesTo) ? null : req.ForwardDeadLetteredMessagesTo.Trim());
             }
             catch (Exception ex)
             {
