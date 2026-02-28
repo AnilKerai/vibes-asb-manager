@@ -23,6 +23,32 @@ With that in mind, feel free to suggest / make improvements - i'm not particular
 - Pinned connections and quick search for large lists.
 - Data persisted to JSON; no external database required.
 
+## Features (screenshots)
+
+### Connections drawer + quick search
+
+Pinned connections bubble to the top and the drawer search filters large lists quickly.
+
+![Connections drawer](docs/features-02-drawer.png)
+
+### Browse namespace entities
+
+Navigate queues, topics, and subscriptions with an expandable tree and a clear summary of namespace counts.
+
+![Namespace browser](docs/features-03-namespace.png)
+
+### Queue management + message visibility
+
+Edit entity settings, inspect active messages, and review DLQ rows in one place.
+
+![Queue view](docs/features-04-queue.png)
+
+### Send messages with rich options
+
+Compose messages with body helpers, properties, and scheduling controls.
+
+![Send message dialog](docs/features-05-send-message.png)
+
 ## Quick start (recommended): Docker CLI
 
 Run the container and persist connection data in a named volume:
