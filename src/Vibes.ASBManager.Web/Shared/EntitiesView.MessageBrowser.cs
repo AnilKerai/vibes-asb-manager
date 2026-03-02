@@ -152,6 +152,11 @@ public partial class EntitiesView
                 while (collected.Count < target && !cancellationToken.IsCancellationRequested)
                 {
                     var page = await PeekSelectedMessagesAsync(isDeadLetter: true, anchor, FetchSize, cancellationToken);
+                    if (page.Count == 0 && anchor.HasValue)
+                    {
+                        anchor = null;
+                        page = await PeekSelectedMessagesAsync(isDeadLetter: true, anchor, FetchSize, cancellationToken);
+                    }
                     if (page.Count == 0) break;
                     collected.AddRange(page);
                     anchor = GetNextAnchor(anchor, page);
