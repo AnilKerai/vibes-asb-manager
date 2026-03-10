@@ -425,7 +425,7 @@
                 correlationId: req.CorrelationId,
                 properties: req.Properties,
                 contentType: contentType,
-                messageId: null,
+                messageId: req.MessageId,
                 scheduledEnqueueTime: scheduled,
                 cancellationToken: cancellationToken),
             sendBatchAsync: (req, contentType, cancellationToken) => MessageSender.SendBatchToQueueAsync(
@@ -437,7 +437,7 @@
                 correlationId: req.CorrelationId,
                 properties: req.Properties,
                 contentType: contentType,
-                messageId: null,
+                messageId: req.MessageId,
                 cancellationToken: cancellationToken));
     }
 
@@ -456,7 +456,7 @@
                 correlationId: req.CorrelationId,
                 properties: req.Properties,
                 contentType: contentType,
-                messageId: null,
+                messageId: req.MessageId,
                 scheduledEnqueueTime: scheduled,
                 cancellationToken: cancellationToken),
             sendBatchAsync: (req, contentType, cancellationToken) => MessageSender.SendBatchToTopicAsync(
@@ -468,7 +468,7 @@
                 correlationId: req.CorrelationId,
                 properties: req.Properties,
                 contentType: contentType,
-                messageId: null,
+                messageId: req.MessageId,
                 cancellationToken: cancellationToken));
     }
 

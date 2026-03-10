@@ -6,8 +6,21 @@
     <DialogContent>
         <MudForm @ref="_form">
             <MudTextField T="string" Label="Subject" @bind-Value="Model.Subject" tabindex="1" />
-            <MudTextField T="string" Label="Correlation Id" @bind-Value="Model.CorrelationId" tabindex="2" />
-            <MudAutocomplete T="string" Label="Content Type" @bind-Value="Model.ContentType" SearchFunc="SearchContentTypes" Clearable="true" tabindex="3" />
+            <MudTextField T="string" Label="Correlation Id" @bind-Value="Model.CorrelationId"
+                          Adornment="Adornment.End"
+                          AdornmentIcon="@Icons.Material.Filled.Refresh"
+                          OnAdornmentClick="GenerateCorrelationId"
+                          AdornmentAriaLabel="Generate GUID"
+                          tabindex="2" />
+            <MudTextField T="string" Label="Message ID" @bind-Value="Model.MessageId"
+                          Placeholder="Leave blank to auto-assign"
+                          HelperText="Required for partitioned queues"
+                          Adornment="Adornment.End"
+                          AdornmentIcon="@Icons.Material.Filled.Refresh"
+                          OnAdornmentClick="GenerateMessageId"
+                          AdornmentAriaLabel="Generate GUID"
+                          tabindex="3" />
+            <MudAutocomplete T="string" Label="Content Type" @bind-Value="Model.ContentType" SearchFunc="SearchContentTypes" Clearable="true" tabindex="4" />
             <CodeEditor @bind-Value="Model.Body" ContentType="@Model.ContentType" Lines="12" Placeholder="Body" />
             <MudText Typo="Typo.subtitle2" Class="mt-2">Application Properties</MudText>
             <KeyValueEditor @bind-Value="Model.Properties" />
@@ -25,8 +38,8 @@
                 <MudText Typo="Typo.caption" Class="mt-1">@GetSchedulePreview()</MudText>
             }
 
-            <MudNumericField T="int" Label="Count" @bind-Value="Model.Count" Min="1" Max="1000" Immediate="true" tabindex="6" />
-            <MudNumericField T="int" Label="Interval (seconds; 0 for none)" @bind-Value="Model.IntervalSeconds" Min="0" Max="3600" Immediate="true" tabindex="7" />
+            <MudNumericField T="int" Label="Count" @bind-Value="Model.Count" Min="1" Max="1000" Immediate="true" tabindex="7" />
+            <MudNumericField T="int" Label="Interval (seconds; 0 for none)" @bind-Value="Model.IntervalSeconds" Min="0" Max="3600" Immediate="true" tabindex="8" />
         </MudForm>
         @if (OperatingSystem.IsMacCatalyst())
         {
@@ -36,7 +49,7 @@
         }
     </DialogContent>
     <DialogActions>
-        <DialogActionButtons SaveText="Send" CancelTabIndex="8" SaveTabIndex="9" OnCancel="OnCancel" OnSave="Send" />
+        <DialogActionButtons SaveText="Send" CancelTabIndex="9" SaveTabIndex="10" OnCancel="OnCancel" OnSave="Send" />
     </DialogActions>
 </MudDialog>
 
@@ -132,6 +145,16 @@
     }
 
     private void OnCancel() => MudDialog?.Cancel();
+
+    private void GenerateCorrelationId()
+    {
+        Model.CorrelationId = Guid.NewGuid().ToString();
+    }
+
+    private void GenerateMessageId()
+    {
+        Model.MessageId = Guid.NewGuid().ToString();
+    }
 
     private void OnScheduleChanged(bool value)
     {
