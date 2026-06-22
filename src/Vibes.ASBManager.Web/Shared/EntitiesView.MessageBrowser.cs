@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using MudBlazor;
 using Vibes.ASBManager.Application.Models;
+using Vibes.ASBManager.Web.Models;
 
 namespace Vibes.ASBManager.Web.Shared;
 
@@ -11,12 +12,16 @@ public partial class EntitiesView
     private List<MessagePreview> _dlqMessages = new();
     private bool _refreshingActive;
     private bool _refreshingDlq;
-    private const int FetchSize = 50; // how many messages to fetch per API call
+    private const int FetchSize = 50; // how many messages to peek per API call
 
-    private long? _activeAnchor;
-    private long? _dlqAnchor;
-    private Stack<long?> _activeHistory = new();
-    private Stack<long?> _dlqHistory = new();
+    // Upper bound on a single snapshot. Peeking is non-destructive but not free, so we cap
+    // how many messages we pull; the runtime count drives the actual target up to this.
+    private const int MaxSnapshotMessages = FetchSize * 10; // 500
+
+    // PeekMessagesAsync can briefly return an empty batch on a freshly created receiver
+    // even when messages exist; only treat repeated empties as "end of queue".
+    private const int MaxEmptyPeeks = 3;
+
     private bool _liveActive;
     private bool _liveDlq;
     private CancellationTokenSource? _liveActiveCts;
@@ -29,6 +34,7 @@ public partial class EntitiesView
     private CancellationTokenSource? _sendCts;
     private bool _disposed;
     private const int CountsRefreshIntervalMs = 2000;
+    private const int LiveRefreshIntervalMs = 2000;
 
     private async Task<IReadOnlyList<MessagePreview>> PeekSelectedMessagesAsync(bool isDeadLetter, long? fromSequenceNumber, int maxMessages, CancellationToken cancellationToken = default)
     {
@@ -47,11 +53,20 @@ public partial class EntitiesView
         return Array.Empty<MessagePreview>();
     }
 
-    private static long? GetNextAnchor(long? currentAnchor, IReadOnlyList<MessagePreview> items)
+    // Pull an authoritative snapshot of the selected entity's current messages, capping at the
+    // runtime count (or MaxSnapshotMessages when the count is unknown). The paging logic lives
+    // in MessageSnapshotPager so it can be unit-tested without the component or the Azure SDK.
+    private async Task<List<MessagePreview>> PeekSnapshotAsync(bool isDeadLetter, long? knownCount, CancellationToken cancellationToken)
     {
-        if (items.Count == 0) return currentAnchor;
-        var maxSeq = items.Max(m => m.SequenceNumber);
-        return maxSeq == long.MaxValue ? long.MaxValue : maxSeq + 1;
+        var target = knownCount.HasValue
+            ? (int)Math.Clamp(knownCount.Value, 0, MaxSnapshotMessages)
+            : FetchSize;
+        return await MessageSnapshotPager.CollectAsync(
+            (anchor, max, ct) => PeekSelectedMessagesAsync(isDeadLetter, anchor, max, ct),
+            target,
+            FetchSize,
+            MaxEmptyPeeks,
+            cancellationToken);
     }
 
     private CancellationToken StartSendCancellation()
@@ -84,34 +99,16 @@ public partial class EntitiesView
         try
         {
             _refreshingActive = true;
-            IReadOnlyList<MessagePreview> items = Array.Empty<MessagePreview>();
-            items = await PeekSelectedMessagesAsync(isDeadLetter: false, _activeAnchor, FetchSize, cancellationToken);
-            // If not in live mode and our anchor points past the end (yielding no items), reset to null and refetch once
-            if (!_liveActive && _activeAnchor.HasValue && items.Count == 0)
-            {
-                _activeAnchor = null;
-                items = await PeekSelectedMessagesAsync(isDeadLetter: false, _activeAnchor, FetchSize, cancellationToken);
-            }
-            if (_liveActive && _pendingActiveClear)
+            if (_pendingActiveClear)
             {
                 _activeMessages.Clear();
-                _activeHistory.Clear();
-                _activeAnchor = null;
                 _pendingActiveClear = false;
             }
-            if (_liveActive)
-            {
-                _activeAnchor = GetNextAnchor(_activeAnchor, items);
-                _activeMessages = MergeLatestWindow(_activeMessages, items, FetchSize);
-                ReconcileActiveFromDlq();
-            }
-            else
-            {
-                _activeMessages = items
-                    .OrderBy(m => m.EnqueuedTime)
-                    .ToList();
-                ReconcileActiveFromDlq();
-            }
+            var snapshot = await PeekSnapshotAsync(isDeadLetter: false, _activeCount, cancellationToken);
+            _activeMessages = snapshot
+                .OrderBy(m => m.EnqueuedTime)
+                .ToList();
+            ReconcileActiveFromDlq();
         }
         catch (Exception ex)
         {
@@ -130,44 +127,16 @@ public partial class EntitiesView
         try
         {
             _refreshingDlq = true;
-            if (_liveDlq)
+            if (_pendingDlqClear)
             {
-                IReadOnlyList<MessagePreview> liveItems = await PeekSelectedMessagesAsync(isDeadLetter: true, _dlqAnchor, FetchSize, cancellationToken);
-                if (_pendingDlqClear)
-                {
-                    _dlqMessages.Clear();
-                    _dlqHistory.Clear();
-                    _dlqAnchor = null;
-                    _pendingDlqClear = false;
-                }
-                _dlqAnchor = GetNextAnchor(_dlqAnchor, liveItems);
-                _dlqMessages = MergeLatestWindow(_dlqMessages, liveItems, FetchSize);
-                ReconcileActiveFromDlq();
+                _dlqMessages.Clear();
+                _pendingDlqClear = false;
             }
-            else
-            {
-                var collected = new List<MessagePreview>();
-                var anchor = _dlqAnchor;
-                var target = _dlqCount.HasValue ? (int)Math.Min(_dlqCount.Value, FetchSize * 10) : FetchSize;
-                while (collected.Count < target && !cancellationToken.IsCancellationRequested)
-                {
-                    var page = await PeekSelectedMessagesAsync(isDeadLetter: true, anchor, FetchSize, cancellationToken);
-                    if (page.Count == 0 && anchor.HasValue)
-                    {
-                        anchor = null;
-                        page = await PeekSelectedMessagesAsync(isDeadLetter: true, anchor, FetchSize, cancellationToken);
-                    }
-                    if (page.Count == 0) break;
-                    collected.AddRange(page);
-                    anchor = GetNextAnchor(anchor, page);
-                    if (page.Count < FetchSize) break;
-                }
-                _dlqAnchor = anchor;
-                _dlqMessages = collected
-                    .OrderBy(m => m.EnqueuedTime)
-                    .ToList();
-                ReconcileActiveFromDlq();
-            }
+            var snapshot = await PeekSnapshotAsync(isDeadLetter: true, _dlqCount, cancellationToken);
+            _dlqMessages = snapshot
+                .OrderBy(m => m.EnqueuedTime)
+                .ToList();
+            ReconcileActiveFromDlq();
         }
         catch (Exception ex)
         {
@@ -240,14 +209,10 @@ public partial class EntitiesView
             if ((_activeCount ?? 0) == 0)
             {
                 _activeMessages.Clear();
-                _activeAnchor = null;
-                _activeHistory.Clear();
             }
             if ((_dlqCount ?? 0) == 0)
             {
                 _dlqMessages.Clear();
-                _dlqAnchor = null;
-                _dlqHistory.Clear();
             }
         }
         catch (Exception ex)
@@ -270,11 +235,6 @@ public partial class EntitiesView
     private async Task OnActiveRefresh()
     {
         if (!CanRefreshMessages) return;
-        if (!_liveActive)
-        {
-            _activeAnchor = null;
-            _activeHistory.Clear();
-        }
         await RefreshCountsAsync();
         await RefreshActiveAsync();
         if (!_disposed)
@@ -282,7 +242,7 @@ public partial class EntitiesView
             try { await InvokeAsync(StateHasChanged); }
             catch (Exception ex)
             {
-                Logger?.LogDebug(ex, "Failed to refresh UI after active rewind.");
+                Logger?.LogDebug(ex, "Failed to refresh UI after active refresh.");
             }
         }
     }
@@ -290,11 +250,6 @@ public partial class EntitiesView
     private async Task OnDlqRefresh()
     {
         if (!CanRefreshMessages) return;
-        if (!_liveDlq)
-        {
-            _dlqAnchor = null;
-            _dlqHistory.Clear();
-        }
         await RefreshCountsAsync();
         await RefreshDlqAsync();
         if (!_disposed)
@@ -302,7 +257,7 @@ public partial class EntitiesView
             try { await InvokeAsync(StateHasChanged); }
             catch (Exception ex)
             {
-                Logger?.LogDebug(ex, "Failed to refresh UI after DLQ rewind.");
+                Logger?.LogDebug(ex, "Failed to refresh UI after DLQ refresh.");
             }
         }
     }
@@ -355,11 +310,6 @@ public partial class EntitiesView
         if (!CanRefreshMessages || _disposed) return;
         StopLiveActive();
         _liveActive = true;
-        // Reset paging to latest when starting live
-        _activeAnchor = (_activeMessages is { Count: > 0 })
-            ? (_activeMessages.Max(m => m.SequenceNumber) == long.MaxValue ? long.MaxValue : _activeMessages.Max(m => m.SequenceNumber) + 1)
-            : null;
-        _activeHistory.Clear();
         _liveActiveCts = new CancellationTokenSource();
         _ = Task.Run(async () =>
         {
@@ -373,7 +323,7 @@ public partial class EntitiesView
                 {
                     Logger?.LogDebug(ex, "Failed to refresh UI during live active polling.");
                 }
-                try { await Task.Delay(1000, token); }
+                try { await Task.Delay(LiveRefreshIntervalMs, token); }
                 catch (OperationCanceledException) { break; }
             }
         });
@@ -400,11 +350,6 @@ public partial class EntitiesView
         if (!CanRefreshMessages || _disposed) return;
         StopLiveDlq();
         _liveDlq = true;
-        // Reset paging to latest when starting live
-        _dlqAnchor = (_dlqMessages is { Count: > 0 })
-            ? (_dlqMessages.Max(m => m.SequenceNumber) == long.MaxValue ? long.MaxValue : _dlqMessages.Max(m => m.SequenceNumber) + 1)
-            : null;
-        _dlqHistory.Clear();
         _liveDlqCts = new CancellationTokenSource();
         _ = Task.Run(async () =>
         {
@@ -418,7 +363,7 @@ public partial class EntitiesView
                 {
                     Logger?.LogDebug(ex, "Failed to refresh UI during live DLQ polling.");
                 }
-                try { await Task.Delay(1000, token); }
+                try { await Task.Delay(LiveRefreshIntervalMs, token); }
                 catch (OperationCanceledException) { break; }
             }
         });
@@ -470,26 +415,6 @@ public partial class EntitiesView
             Logger?.LogDebug(ex, "Failed to dispose counts polling cancellation token.");
         }
         _countsCts = null;
-    }
-
-    // Merge helper: dedupe by sequence, keep most recent by EnqueuedTime, limit to window size
-    private static List<MessagePreview> MergeLatestWindow(List<MessagePreview> existing, IReadOnlyList<MessagePreview> incoming, int windowSize)
-    {
-        if (incoming is null || incoming.Count == 0)
-            return existing ?? new List<MessagePreview>();
-
-        var map = (existing ?? new List<MessagePreview>())
-            .ToDictionary(m => m.SequenceNumber, m => m);
-
-        foreach (var msg in incoming)
-            map[msg.SequenceNumber] = msg;
-
-        // Keep the latest windowSize items by EnqueuedTime, but display ascending in the UI
-        return map.Values
-            .OrderByDescending(m => m.EnqueuedTime)
-            .Take(windowSize)
-            .OrderBy(m => m.EnqueuedTime)
-            .ToList();
     }
 
     private void ReconcileActiveFromDlq()

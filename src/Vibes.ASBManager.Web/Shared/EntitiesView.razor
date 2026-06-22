@@ -297,8 +297,6 @@
     {
         _pendingActiveClear = true;
         _activeMessages.Clear();
-        _activeAnchor = null;
-        _activeHistory.Clear();
         try { await InvokeAsync(StateHasChanged); }
         catch (Exception ex)
         {
@@ -312,8 +310,6 @@
     {
         _pendingDlqClear = true;
         _dlqMessages.Clear();
-        _dlqAnchor = null;
-        _dlqHistory.Clear();
         try { await InvokeAsync(StateHasChanged); }
         catch (Exception ex)
         {
@@ -338,10 +334,6 @@
         StopCountsPolling();
         _activeMessages.Clear();
         _dlqMessages.Clear();
-        _activeAnchor = null;
-        _dlqAnchor = null;
-        _activeHistory.Clear();
-        _dlqHistory.Clear();
         _activeCount = null;
         _dlqCount = null;
         _queues = null;
@@ -860,11 +852,6 @@
         StopCountsPolling();
         _activeMessages.Clear();
         _dlqMessages.Clear();
-        // Reset anchors and paging history for new selection
-        _activeAnchor = null;
-        _dlqAnchor = null;
-        _activeHistory.Clear();
-        _dlqHistory.Clear();
         await LoadSettingsForSelection();
         await LoadRulesForSelection();
         await RefreshCountsAsync();
