@@ -51,6 +51,6 @@ docker compose up -d
 
 ## CI/CD
 
-- **CI** (`.github/workflows/ci.yml`): builds and tests on .NET 9.0 for all branches/PRs
+- **CI** (`.github/workflows/ci.yml`): builds and tests on .NET 10.0 for all branches/PRs
 - **Docker** (`.github/workflows/docker.yml`): multi-arch (amd64 + arm64) images published to `anilkerai/vibes-asb-manager-web` on Docker Hub
 - Version tags (`v*`) trigger semver-tagged releases; pushes to `main` produce short-SHA + `main` tags
