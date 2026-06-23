@@ -30,10 +30,10 @@ cleanup; **E4** removed unused `DataProtection.Abstractions`.
 ## Suggested order
 
 Front-loaded with high-value correctness; bigger structural/feature work later.
-(A1, A2, A3, B1, B2, C1, C2/C3/C4, D1 and the E-series are done — see Recently shipped above.)
+(A1, A2, A3, B1, B2, C1, C2/C3/C4, D1, D2 and the E-series are done — see Recently shipped above.)
 
-1. **B3** — connection-handle abstraction + Microsoft Entra ID auth (biggest feature unlock)
-2. **D2** — opportunistic polish (extract more pure logic for tests)
+1. **B3** — connection-handle abstraction + Microsoft Entra ID auth (biggest feature unlock) — the
+   one remaining item; a large, multi-file feature best taken on with a fresh, focused session.
 
 ---
 
@@ -138,9 +138,12 @@ Front-loaded with high-value correctness; bigger structural/feature work later.
   local / pre-release gate — see `tests/emulator/README.md`. *Remaining (optional):* run it in CI
   behind an opt-in if we ever want it gating PRs.
 
-- [ ] **D2 — Keep extracting pure logic for unit tests `[S, ongoing]`**
-  Continue pulling testable logic out of components (as with `MessageSnapshotPager`): connection
-  string parsing edge cases, rule formatting, settings mapping.
+- [x] **D2 — Extract pure logic for unit tests `[S, ongoing]`** — ✅ pass complete. Connection-string
+  and `TimeSpan` parsing, rule formatting, and the `MessageSnapshotPager` were already covered; this
+  pass added `TimeSpanParser.Format` (the display inverse, moved out of `EntitiesView`, with
+  round-trip tests) and a `SettingsSanitizer` (max-delivery floor + forward-address normalisation,
+  de-duplicated out of `SaveSettingsAsync`) with tests. Ongoing by nature — pull more logic out as
+  components grow. Unit suite is now 75 tests.
 
 ## E. Packaging / ops
 

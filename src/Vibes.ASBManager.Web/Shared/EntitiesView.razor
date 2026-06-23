@@ -772,9 +772,9 @@
             if (TryGetQueue(out var q))
             {
                 var s = await QueueAdmin.GetQueueSettingsAsync(_connectionString!, q);
-                _ttlText = FormatTimeSpan(s.DefaultMessageTimeToLive);
+                _ttlText = TimeSpanParser.Format(s.DefaultMessageTimeToLive);
                 _deadLetterOnExpiration = s.DeadLetteringOnMessageExpiration;
-                _lockDurationText = FormatTimeSpan(s.LockDuration);
+                _lockDurationText = TimeSpanParser.Format(s.LockDuration);
                 _maxDeliveryCount = s.MaxDeliveryCount;
                 _enableBatchedOperations = s.EnableBatchedOperations;
                 _forwardTo = s.ForwardTo;
@@ -783,7 +783,7 @@
             else if (TryGetTopic(out var t))
             {
                 var s = await TopicAdmin.GetTopicSettingsAsync(_connectionString!, t);
-                _ttlText = FormatTimeSpan(s.DefaultMessageTimeToLive);
+                _ttlText = TimeSpanParser.Format(s.DefaultMessageTimeToLive);
                 _enableBatchedOperations = s.EnableBatchedOperations;
                 _lockDurationText = string.Empty;
                 _maxDeliveryCount = 10;
@@ -794,10 +794,10 @@
             else if (TryGetSubscription(out var topic, out var sub))
             {
                 var s = await SubscriptionAdmin.GetSubscriptionSettingsAsync(_connectionString!, topic, sub);
-                _ttlText = FormatTimeSpan(s.DefaultMessageTimeToLive);
+                _ttlText = TimeSpanParser.Format(s.DefaultMessageTimeToLive);
                 _deadLetterOnExpiration = s.DeadLetteringOnMessageExpiration;
                 _requiresSession = s.RequiresSession;
-                _lockDurationText = FormatTimeSpan(s.LockDuration);
+                _lockDurationText = TimeSpanParser.Format(s.LockDuration);
                 _maxDeliveryCount = s.MaxDeliveryCount;
                 _enableBatchedOperations = s.EnableBatchedOperations;
                 _forwardTo = s.ForwardTo;
@@ -813,8 +813,6 @@
             _settingsLoading = false;
         }
     }
-
-    private static string FormatTimeSpan(TimeSpan ts) => ts.ToString("c");
 
     private static string FormatCount(long? count) => count.HasValue ? count.Value.ToString("N0") : "-";
 
@@ -842,9 +840,9 @@
                     Snackbar.Add("Invalid Lock Duration. Use d.hh:mm:ss (e.g., 00:01:00).", Severity.Warning);
                     return;
                 }
-                var sanitizedMaxDelivery = Math.Max(1, _maxDeliveryCount);
-                var forwardTo = string.IsNullOrWhiteSpace(_forwardTo) ? null : _forwardTo.Trim();
-                var forwardDeadLetteredTo = string.IsNullOrWhiteSpace(_forwardDeadLetteredTo) ? null : _forwardDeadLetteredTo.Trim();
+                var sanitizedMaxDelivery = SettingsSanitizer.MaxDeliveryCount(_maxDeliveryCount);
+                var forwardTo = SettingsSanitizer.ForwardAddress(_forwardTo);
+                var forwardDeadLetteredTo = SettingsSanitizer.ForwardAddress(_forwardDeadLetteredTo);
                 await QueueAdmin.UpdateQueueSettingsAsync(_connectionString!, q, ttl, _deadLetterOnExpiration);
                 // Advanced properties
                 await QueueAdmin.UpdateQueuePropertiesAsync(
@@ -869,9 +867,9 @@
                     Snackbar.Add("Invalid Lock Duration. Use d.hh:mm:ss (e.g., 00:01:00).", Severity.Warning);
                     return;
                 }
-                var sanitizedMaxDelivery = Math.Max(1, _maxDeliveryCount);
-                var forwardTo = string.IsNullOrWhiteSpace(_forwardTo) ? null : _forwardTo.Trim();
-                var forwardDeadLetteredTo = string.IsNullOrWhiteSpace(_forwardDeadLetteredTo) ? null : _forwardDeadLetteredTo.Trim();
+                var sanitizedMaxDelivery = SettingsSanitizer.MaxDeliveryCount(_maxDeliveryCount);
+                var forwardTo = SettingsSanitizer.ForwardAddress(_forwardTo);
+                var forwardDeadLetteredTo = SettingsSanitizer.ForwardAddress(_forwardDeadLetteredTo);
                 await SubscriptionAdmin.UpdateSubscriptionSettingsAsync(_connectionString!, topic, sub, ttl, _deadLetterOnExpiration);
                 // Advanced properties
                 await SubscriptionAdmin.UpdateSubscriptionPropertiesAsync(
