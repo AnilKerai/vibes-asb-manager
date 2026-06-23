@@ -10,8 +10,10 @@ public partial class EntitiesView
     // Messages view state
     private List<MessagePreview> _activeMessages = new();
     private List<MessagePreview> _dlqMessages = new();
-    private bool _refreshingActive;
-    private bool _refreshingDlq;
+    // 0 = idle, 1 = a refresh is in flight. Guarded with Interlocked because a refresh can be
+    // triggered concurrently from a background polling loop and from a UI action.
+    private int _refreshingActive;
+    private int _refreshingDlq;
     private const int FetchSize = 50; // how many messages to peek per API call
 
     // Upper bound on a single snapshot. Peeking is non-destructive but not free, so we cap
@@ -32,7 +34,7 @@ public partial class EntitiesView
     private long? _dlqCount;
     private CancellationTokenSource? _countsCts;
     private CancellationTokenSource? _sendCts;
-    private bool _disposed;
+    private volatile bool _disposed; // set on Dispose; read by the background polling loops
     private const int CountsRefreshIntervalMs = 2000;
     private const int LiveRefreshIntervalMs = 2000;
 
@@ -94,11 +96,10 @@ public partial class EntitiesView
     // Active/DLQ refresh and live polling
     private async Task RefreshActiveAsync(CancellationToken cancellationToken = default)
     {
-        if (!CanRefreshMessages || _refreshingActive) return;
-        if (cancellationToken.IsCancellationRequested) return;
+        if (!CanRefreshMessages || cancellationToken.IsCancellationRequested) return;
+        if (Interlocked.CompareExchange(ref _refreshingActive, 1, 0) != 0) return; // already refreshing
         try
         {
-            _refreshingActive = true;
             if (_pendingActiveClear)
             {
                 _activeMessages.Clear();
@@ -116,17 +117,16 @@ public partial class EntitiesView
         }
         finally
         {
-            _refreshingActive = false;
+            Interlocked.Exchange(ref _refreshingActive, 0);
         }
     }
 
     private async Task RefreshDlqAsync(CancellationToken cancellationToken = default)
     {
-        if (!CanRefreshMessages || _refreshingDlq) return;
-        if (cancellationToken.IsCancellationRequested) return;
+        if (!CanRefreshMessages || cancellationToken.IsCancellationRequested) return;
+        if (Interlocked.CompareExchange(ref _refreshingDlq, 1, 0) != 0) return; // already refreshing
         try
         {
-            _refreshingDlq = true;
             if (_pendingDlqClear)
             {
                 _dlqMessages.Clear();
@@ -144,7 +144,7 @@ public partial class EntitiesView
         }
         finally
         {
-            _refreshingDlq = false;
+            Interlocked.Exchange(ref _refreshingDlq, 0);
         }
     }
 

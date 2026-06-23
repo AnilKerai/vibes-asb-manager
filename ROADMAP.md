@@ -116,7 +116,7 @@ Front-loaded with high-value correctness; bigger structural/feature work later.
   toast every 2 seconds. *Approach:* surface one sticky error and pause/back off polling on repeated
   failures.
 
-- [ ] **C4 — Tighten background-thread state access `[S]`**
+- [x] **C4 — Tighten background-thread state access `[S]`** — ✅ shipped (`_disposed` is now `volatile`; `_refreshing*` flags use atomic `Interlocked` guards)
   `_disposed` / `_refreshing*` are plain fields touched by background tasks and the render thread.
   *Approach:* mark `_disposed` `volatile` and/or funnel state transitions through `InvokeAsync`.
 
