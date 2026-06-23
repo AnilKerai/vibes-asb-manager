@@ -30,11 +30,10 @@ cleanup; **E4** removed unused `DataProtection.Abstractions`.
 ## Suggested order
 
 Front-loaded with high-value correctness; bigger structural/feature work later.
-(A1, A2, A3, B1, C2/C3/C4, D1 and the E-series are done — see Recently shipped above.)
+(A1, A2, A3, B1, C1, C2/C3/C4, D1 and the E-series are done — see Recently shipped above.)
 
-1. **C1** — decompose `EntitiesView`
-2. **B3** — connection-handle abstraction + Microsoft Entra ID auth (biggest feature unlock)
-3. **B2 / D2** — opportunistic polish
+1. **B3** — connection-handle abstraction + Microsoft Entra ID auth (biggest feature unlock)
+2. **B2 / D2** — opportunistic polish
 
 ---
 
@@ -104,14 +103,14 @@ Front-loaded with high-value correctness; bigger structural/feature work later.
 
 ## C. Blazor component
 
-- [ ] **C1 — Decompose `EntitiesView` `[L]`** — 🚧 in progress (staged). **Stage 1 shipped:** the
-  browse / live / counts / purge state + operations are extracted into a plain, testable
-  `MessageBrowsingController` (UI-free — it raises `StateChanged` / `Notify` rather than touching the
-  renderer); `EntitiesView.MessageBrowser.cs` is now a thin adapter that delegates to it, and the pure
-  bits (snapshot target, DLQ reconcile, error-toast dedup, purge text) are unit-tested. **Stage 2
-  (pending):** wrap the controller in a self-contained `MessagesPanel` component so `EntitiesView`
-  just hosts `<MessagesPanel>`. (Live UI behaviour needs a real namespace to verify — the emulator's
-  management API, which the entity tree/counts use, is limited.)
+- [x] **C1 — Decompose `EntitiesView` `[L]`** — ✅ shipped (v1.9.26), verified against a live
+  namespace. The browse / live / counts / purge state + operations are extracted into a plain,
+  testable `MessageBrowsingController` (UI-free — it raises `StateChanged` / `Notify` rather than
+  touching the renderer); `EntitiesView.MessageBrowser.cs` is now a thin adapter that delegates to it,
+  and the pure bits (snapshot target, DLQ reconcile, error-toast dedup, purge text) are unit-tested.
+  A further self-contained `MessagesPanel` component was **deliberately not pursued**: the action bar
+  is shared between message and entity actions, so splitting it would force either a visible UI change
+  or cross-component `@ref` wiring for little gain over the controller extraction.
 
 - [x] **C2 — Replace the polling loops with `PeriodicTimer` `[M]`** — ✅ shipped: the three loops
   (active, dlq, counts) now run through one shared `RunPollLoop` helper using `PeriodicTimer` (no
