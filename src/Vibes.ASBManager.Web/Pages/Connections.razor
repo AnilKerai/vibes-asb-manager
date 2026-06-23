@@ -201,36 +201,4 @@
 
         StateHasChanged();
     }
-
-    private async Task DeleteConnection(ConnectionInfo conn)
-    {
-        if (conn is null) return;
-        var confirm = await DialogService.ShowMessageBox(
-            title: "Delete connection",
-            message: $"Are you sure you want to delete '{conn.Name}'?",
-            yesText: "Delete",
-            cancelText: "Cancel",
-            options: new DialogOptions { CloseButton = true });
-        if (confirm != true)
-            return;
-        try
-        {
-            await ConnectionStore.DeleteAsync(conn.Id);
-            // Close any open tab for this connection
-            CloseTab(conn.Id);
-            // Refresh list
-            _connections = await ConnectionStore.GetAllAsync();
-            StateHasChanged();
-        }
-        catch (Exception ex)
-        {
-            await DialogService.ShowMessageBox(
-                title: "Error",
-                message: $"Failed to delete connection: {ex.Message}",
-                yesText: "OK");
-        }
-    }
-
-    
-
 }
