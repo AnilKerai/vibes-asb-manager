@@ -30,15 +30,11 @@ cleanup; **E4** removed unused `DataProtection.Abstractions`.
 ## Suggested order
 
 Front-loaded with high-value correctness; bigger structural/feature work later.
-(B1 and the E-series are done — see Recently shipped above.)
+(A1, A2, B1, C2/C3/C4, D1 and the E-series are done — see Recently shipped above.)
 
-1. **A1** — fix session-enabled entities (correctness gap users can hit)
-2. **D1** — Service Bus emulator integration tests (would have caught the DLQ bug)
-3. **C2 / C3 / C4** — polling modernization, error-toast backoff, thread-safety
-4. **A2** — push snapshot paging into the infra layer (one receiver per snapshot)
-5. **C1** — decompose `EntitiesView`
-6. **B3** — connection-handle abstraction + Microsoft Entra ID auth (biggest feature unlock)
-7. **A3 / B2 / D2** — opportunistic polish
+1. **C1** — decompose `EntitiesView`
+2. **B3** — connection-handle abstraction + Microsoft Entra ID auth (biggest feature unlock)
+3. **A3 / B2 / D2** — opportunistic polish
 
 ---
 
@@ -57,14 +53,14 @@ Front-loaded with high-value correctness; bigger structural/feature work later.
   tests: session queue & subscription purge, session-DLQ purge, session replay round-trip, plain-queue
   regression). The pure replay-message mapping is also covered by a unit test.
 
-- [ ] **A2 — Push snapshot paging into the infra layer (one receiver) `[M]`**
-  `PeekSnapshotAsync` currently creates a fresh receiver per page via `PeekSelectedMessagesAsync`.
-  A single long-lived receiver advances its own peek cursor, which is cheaper (no per-page AMQP
-  link churn) and avoids the cold-receiver partial-batch issue at the source.
-  *Where:* `AzureServiceBusMessaging` (add `PeekQueueSnapshotAsync`/`...Subscription...`),
-  `IMessageBrowser`, and `EntitiesView.MessageBrowser.cs`.
-  *Approach:* move the `MessageSnapshotPager.CollectAsync` loop down behind the interface, owning
-  one receiver. *Done when:* a 500-message DLQ refresh issues one receiver, not ~10.
+- [x] **A2 — Push snapshot paging into the infra layer (one receiver) `[M]`** — ✅ shipped. Added
+  `Peek{Queue,Subscription}[DeadLetter]SnapshotAsync` to `IMessageBrowser` /
+  `AzureServiceBusMessaging`: each creates one receiver and pages with `MessageSnapshotPager`
+  (relocated to the Application layer so the infra reuses the unit-tested loop), passing the pager's
+  anchor straight to `PeekMessagesAsync` on that single receiver. `EntitiesView` calls the snapshot
+  methods directly and the per-page `PeekSelectedMessagesAsync` is gone, so a 500-message refresh
+  issues one receiver instead of ~10. Verified by emulator peek-paging tests (queue / queue-DLQ /
+  subscription) that force several short pages — the original DLQ partial-batch bug class.
 
 - [ ] **A3 — Make purge cap configurable / loop to count `[S]`**
   Purge is a best-effort `ReceiveAndDelete` drain hardcoded at `maxMessages: 1000`; large queues
@@ -125,11 +121,13 @@ Front-loaded with high-value correctness; bigger structural/feature work later.
 
 ## D. Testing & CI
 
-- [ ] **D1 — Service Bus emulator integration tests `[M]`**
-  The whole Azure layer is `[ExcludeFromCodeCoverage]` with no integration coverage — exactly the
-  gap that let the DLQ partial-batch bug ship. *Approach:* add an Azure Service Bus emulator
-  (Docker) service to a new integration test project and cover peek/send/purge/replay; wire it into
-  CI. *Done when:* CI exercises real peek paging against the emulator.
+- [x] **D1 — Service Bus emulator integration tests `[M]`** — ✅ largely shipped. `tests/emulator`
+  (Docker compose + config) plus `Vibes.ASBManager.Tests.Integration` cover session
+  purge/DLQ/replay (A1) and peek paging incl. the DLQ partial-batch bug class (A2), run against the
+  real emulator. The suite is in the solution and **auto-skips** when no emulator is reachable.
+  Deliberately **not wired into CI** (the emulator is amd64-only and adds minutes per run); it's a
+  local / pre-release gate — see `tests/emulator/README.md`. *Remaining (optional):* run it in CI
+  behind an opt-in if we ever want it gating PRs.
 
 - [ ] **D2 — Keep extracting pure logic for unit tests `[S, ongoing]`**
   Continue pulling testable logic out of components (as with `MessageSnapshotPager`): connection

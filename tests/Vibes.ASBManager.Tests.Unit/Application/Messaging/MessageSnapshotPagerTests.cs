@@ -1,8 +1,7 @@
 using Vibes.ASBManager.Application.Models;
-using Vibes.ASBManager.Web.Models;
-using static Vibes.ASBManager.Web.Models.MessageSnapshotPager;
+using static Vibes.ASBManager.Application.Messaging.MessageSnapshotPager;
 
-namespace Vibes.ASBManager.Tests.Unit.Web.Models;
+namespace Vibes.ASBManager.Tests.Unit.Application.Messaging;
 
 public class MessageSnapshotPagerTests
 {

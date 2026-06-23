@@ -3,6 +3,7 @@ using System.Diagnostics.CodeAnalysis;
 using Azure.Messaging.ServiceBus;
 using Microsoft.Extensions.Logging;
 using Vibes.ASBManager.Application.Interfaces.Messaging;
+using Vibes.ASBManager.Application.Messaging;
 using Vibes.ASBManager.Application.Models;
 
 namespace Vibes.ASBManager.Infrastructure.AzureServiceBus.ServiceBus;
@@ -74,14 +75,7 @@ public sealed class AzureServiceBusMessaging(
         var messages = await receiver.PeekMessagesAsync(maxMessages, fromSequenceNumber, cancellationToken).ConfigureAwait(false);
 
         return messages
-            .Select(receivedMessage => new MessagePreview
-            {
-                SequenceNumber = receivedMessage.SequenceNumber,
-                EnqueuedTime = receivedMessage.EnqueuedTime,
-                MessageId = receivedMessage.MessageId,
-                Subject = receivedMessage.Subject,
-                CorrelationId = receivedMessage.CorrelationId
-            })
+            .Select(ToPreview)
             .OrderBy(preview => preview.SequenceNumber)
             .ToList();
     }
@@ -94,14 +88,7 @@ public sealed class AzureServiceBusMessaging(
         var messages = await receiver.PeekMessagesAsync(maxMessages, fromSequenceNumber, cancellationToken).ConfigureAwait(false);
 
         return messages
-            .Select(receivedMessage => new MessagePreview
-            {
-                SequenceNumber = receivedMessage.SequenceNumber,
-                EnqueuedTime = receivedMessage.EnqueuedTime,
-                MessageId = receivedMessage.MessageId,
-                Subject = receivedMessage.Subject,
-                CorrelationId = receivedMessage.CorrelationId
-            })
+            .Select(ToPreview)
             .OrderBy(preview => preview.SequenceNumber)
             .ToList();
     }
@@ -114,14 +101,7 @@ public sealed class AzureServiceBusMessaging(
         var messages = await receiver.PeekMessagesAsync(maxMessages, fromSequenceNumber, cancellationToken).ConfigureAwait(false);
 
         return messages
-            .Select(receivedMessage => new MessagePreview
-            {
-                SequenceNumber = receivedMessage.SequenceNumber,
-                EnqueuedTime = receivedMessage.EnqueuedTime,
-                MessageId = receivedMessage.MessageId,
-                Subject = receivedMessage.Subject,
-                CorrelationId = receivedMessage.CorrelationId
-            })
+            .Select(ToPreview)
             .OrderBy(preview => preview.SequenceNumber)
             .ToList();
     }
@@ -134,16 +114,66 @@ public sealed class AzureServiceBusMessaging(
         var messages = await receiver.PeekMessagesAsync(maxMessages, fromSequenceNumber, cancellationToken).ConfigureAwait(false);
 
         return messages
-            .Select(receivedMessage => new MessagePreview
-            {
-                SequenceNumber = receivedMessage.SequenceNumber,
-                EnqueuedTime = receivedMessage.EnqueuedTime,
-                MessageId = receivedMessage.MessageId,
-                Subject = receivedMessage.Subject,
-                CorrelationId = receivedMessage.CorrelationId
-            })
+            .Select(ToPreview)
             .OrderBy(preview => preview.SequenceNumber)
             .ToList();
+    }
+
+    private static MessagePreview ToPreview(ServiceBusReceivedMessage message) => new()
+    {
+        SequenceNumber = message.SequenceNumber,
+        EnqueuedTime = message.EnqueuedTime,
+        MessageId = message.MessageId,
+        Subject = message.Subject,
+        CorrelationId = message.CorrelationId
+    };
+
+    // Pages a snapshot behind a SINGLE receiver: the shared pager advances the peek anchor and we
+    // pass it straight to PeekMessagesAsync on the same receiver, so a 500-message refresh issues
+    // one receiver instead of one per page. Short/empty-batch tolerance lives in the pager.
+    private static async Task<IReadOnlyList<MessagePreview>> CollectSnapshotAsync(
+        ServiceBusReceiver receiver, int target, int fetchSize, int maxEmptyPeeks, CancellationToken cancellationToken)
+    {
+        var collected = await MessageSnapshotPager.CollectAsync(
+            async (anchor, max, token) =>
+            {
+                var page = await receiver.PeekMessagesAsync(max, anchor, token).ConfigureAwait(false);
+                IReadOnlyList<MessagePreview> previews = page.Select(ToPreview).ToList();
+                return previews;
+            },
+            target, fetchSize, maxEmptyPeeks, cancellationToken).ConfigureAwait(false);
+
+        return collected
+            .OrderBy(preview => preview.SequenceNumber)
+            .ToList();
+    }
+
+    public async Task<IReadOnlyList<MessagePreview>> PeekQueueSnapshotAsync(string connectionString, string queueName, int target, int fetchSize = 50, int maxEmptyPeeks = 3, CancellationToken cancellationToken = default)
+    {
+        var client = GetClient(connectionString);
+        await using var receiver = client.CreateReceiver(queueName);
+        return await CollectSnapshotAsync(receiver, target, fetchSize, maxEmptyPeeks, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<IReadOnlyList<MessagePreview>> PeekQueueDeadLetterSnapshotAsync(string connectionString, string queueName, int target, int fetchSize = 50, int maxEmptyPeeks = 3, CancellationToken cancellationToken = default)
+    {
+        var client = GetClient(connectionString);
+        await using var receiver = client.CreateReceiver(queueName, new ServiceBusReceiverOptions { SubQueue = SubQueue.DeadLetter });
+        return await CollectSnapshotAsync(receiver, target, fetchSize, maxEmptyPeeks, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<IReadOnlyList<MessagePreview>> PeekSubscriptionSnapshotAsync(string connectionString, string topicName, string subscriptionName, int target, int fetchSize = 50, int maxEmptyPeeks = 3, CancellationToken cancellationToken = default)
+    {
+        var client = GetClient(connectionString);
+        await using var receiver = client.CreateReceiver(topicName, subscriptionName);
+        return await CollectSnapshotAsync(receiver, target, fetchSize, maxEmptyPeeks, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<IReadOnlyList<MessagePreview>> PeekSubscriptionDeadLetterSnapshotAsync(string connectionString, string topicName, string subscriptionName, int target, int fetchSize = 50, int maxEmptyPeeks = 3, CancellationToken cancellationToken = default)
+    {
+        var client = GetClient(connectionString);
+        await using var receiver = client.CreateReceiver(topicName, subscriptionName, new ServiceBusReceiverOptions { SubQueue = SubQueue.DeadLetter });
+        return await CollectSnapshotAsync(receiver, target, fetchSize, maxEmptyPeeks, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task SendToQueueAsync(string connectionString, string queueName, string body, string? subject = null, string? correlationId = null, IDictionary<string, string>? properties = null, string? contentType = null, string? messageId = null, DateTimeOffset? scheduledEnqueueTime = null, CancellationToken cancellationToken = default)

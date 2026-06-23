@@ -1,6 +1,6 @@
 using Vibes.ASBManager.Application.Models;
 
-namespace Vibes.ASBManager.Web.Models;
+namespace Vibes.ASBManager.Application.Messaging;
 
 /// <summary>
 /// Pages through Azure Service Bus peek results to build an authoritative snapshot of an

@@ -1,7 +1,6 @@
 using Microsoft.Extensions.Logging;
 using MudBlazor;
 using Vibes.ASBManager.Application.Models;
-using Vibes.ASBManager.Web.Models;
 
 namespace Vibes.ASBManager.Web.Shared;
 
@@ -45,37 +44,35 @@ public partial class EntitiesView
     private const int CountsRefreshIntervalMs = 2000;
     private const int LiveRefreshIntervalMs = 2000;
 
-    private async Task<IReadOnlyList<MessagePreview>> PeekSelectedMessagesAsync(bool isDeadLetter, long? fromSequenceNumber, int maxMessages, CancellationToken cancellationToken = default)
-    {
-        if (TryGetQueue(out var queueName))
-        {
-            return isDeadLetter
-                ? await MessageBrowser.PeekQueueDeadLetterAsync(_connectionString!, queueName, maxMessages, fromSequenceNumber, cancellationToken)
-                : await MessageBrowser.PeekQueueAsync(_connectionString!, queueName, maxMessages, fromSequenceNumber, cancellationToken);
-        }
-        if (TryGetSubscription(out var topicName, out var subscriptionName))
-        {
-            return isDeadLetter
-                ? await MessageBrowser.PeekSubscriptionDeadLetterAsync(_connectionString!, topicName, subscriptionName, maxMessages, fromSequenceNumber, cancellationToken)
-                : await MessageBrowser.PeekSubscriptionAsync(_connectionString!, topicName, subscriptionName, maxMessages, fromSequenceNumber, cancellationToken);
-        }
-        return Array.Empty<MessagePreview>();
-    }
-
     // Pull an authoritative snapshot of the selected entity's current messages, capping at the
-    // runtime count (or MaxSnapshotMessages when the count is unknown). The paging logic lives
-    // in MessageSnapshotPager so it can be unit-tested without the component or the Azure SDK.
+    // runtime count (or FetchSize when the count is unknown). Paging runs behind a single receiver
+    // in the infra layer (IMessageBrowser snapshot methods); the pure paging algorithm it uses is
+    // unit-tested separately as MessageSnapshotPager.
     private async Task<List<MessagePreview>> PeekSnapshotAsync(bool isDeadLetter, long? knownCount, CancellationToken cancellationToken)
     {
         var target = knownCount.HasValue
             ? (int)Math.Clamp(knownCount.Value, 0, MaxSnapshotMessages)
             : FetchSize;
-        return await MessageSnapshotPager.CollectAsync(
-            (anchor, max, ct) => PeekSelectedMessagesAsync(isDeadLetter, anchor, max, ct),
-            target,
-            FetchSize,
-            MaxEmptyPeeks,
-            cancellationToken);
+        if (target <= 0) return new List<MessagePreview>();
+
+        IReadOnlyList<MessagePreview> snapshot;
+        if (TryGetQueue(out var queueName))
+        {
+            snapshot = isDeadLetter
+                ? await MessageBrowser.PeekQueueDeadLetterSnapshotAsync(_connectionString!, queueName, target, FetchSize, MaxEmptyPeeks, cancellationToken)
+                : await MessageBrowser.PeekQueueSnapshotAsync(_connectionString!, queueName, target, FetchSize, MaxEmptyPeeks, cancellationToken);
+        }
+        else if (TryGetSubscription(out var topicName, out var subscriptionName))
+        {
+            snapshot = isDeadLetter
+                ? await MessageBrowser.PeekSubscriptionDeadLetterSnapshotAsync(_connectionString!, topicName, subscriptionName, target, FetchSize, MaxEmptyPeeks, cancellationToken)
+                : await MessageBrowser.PeekSubscriptionSnapshotAsync(_connectionString!, topicName, subscriptionName, target, FetchSize, MaxEmptyPeeks, cancellationToken);
+        }
+        else
+        {
+            return new List<MessagePreview>();
+        }
+        return snapshot.ToList();
     }
 
     private CancellationToken StartSendCancellation()
