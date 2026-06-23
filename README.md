@@ -85,7 +85,6 @@ Upgrade later by pulling a new tag and recreating the container. Reset data by r
 Create a minimal `docker-compose.yml` locally and start the app:
 
 ```yaml
-version: "3.9"
 services:
   web:
     image: anilkerai/vibes-asb-manager-web:latest

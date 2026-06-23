@@ -9,8 +9,4 @@
     <ProjectReference Include="..\Vibes.ASBManager.Application\Vibes.ASBManager.Application.csproj" />
     <ProjectReference Include="..\Vibes.ASBManager.Domain\Vibes.ASBManager.Domain.csproj" />
   </ItemGroup>
-
-  <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.DataProtection.Abstractions" Version="10.0.9" />
-  </ItemGroup>
 </Project>

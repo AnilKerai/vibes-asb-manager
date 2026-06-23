@@ -131,19 +131,19 @@ Front-loaded with quick wins and high-value correctness; bigger structural/featu
 
 ## E. Packaging / ops
 
-- [ ] **E1 — Default the shipped compose to Production + add a healthcheck `[S]`**
-  `docker-compose.yml` sets `ASPNETCORE_ENVIRONMENT=Development` → detailed errors / dev behaviours
-  in the published image. *Approach:* default to Production (let users override) and add a
-  `healthcheck` hitting the `/health` endpoint ServiceDefaults already exposes.
+- [x] **E1 — Add a container healthcheck `[S]`** — ✅ shipped (TCP liveness probe in the Dockerfile,
+  env-agnostic, no extra image deps). ⚠️ The "default to Production" half is **deferred**: the app has
+  no `/Error` page, so Production's `UseExceptionHandler("/Error")` would 404. Revisit alongside adding
+  an `/Error` page; Development stays the default for now (detailed errors suit a local tool).
 
-- [ ] **E2 — Run the container as non-root `[S]`**
+- [x] **E2 — Run the container as non-root `[S]`** — ✅ shipped (runs as the image's `app` user; `App_Data` owned by `app`, `chmod 700`)
   `Dockerfile` does `chown 0:0 … && chmod -R 777 /app/App_Data`. *Approach:* run as the aspnet
   image's non-root `app` user with `chmod 700` on the data dir.
 
-- [ ] **E3 — Drop the obsolete compose `version:` key `[S]`**
+- [x] **E3 — Drop the obsolete compose `version:` key `[S]`** — ✅ shipped (removed from `docker-compose.yml` and the README example)
   `version: "3.9"` is ignored by Compose v2 — remove it.
 
-- [ ] **E4 — Remove unused `DataProtection.Abstractions` `[S]`**
+- [x] **E4 — Remove unused `DataProtection.Abstractions` `[S]`** — ✅ shipped
   Referenced in `Infrastructure.Storage.File.csproj` but unused in code. Drop it (it'd be the hook
   *if* at-rest encryption is ever added — but that's intentionally out of scope).
 
