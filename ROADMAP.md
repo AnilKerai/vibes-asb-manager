@@ -44,14 +44,13 @@ Front-loaded with high-value correctness; bigger structural/feature work later.
 
 ## A. Azure Service Bus correctness
 
-- [ ] **A1 — Handle session-enabled entities `[M]`**
-  You can create `RequiresSession` queues/subscriptions and peek them, but purge/remove/replay
-  use non-session receivers (`ReceiveMessagesAsync`) which throw on session-required entities.
-  *Where:* `AzureServiceBusMessaging` (purge/remove/replay methods); `RequiresSession` surfaces in
-  `AzureServiceBusAdmin` settings + create-queue.
-  *Approach:* detect `RequiresSession` and use `AcceptNextSessionAsync`, or disable those actions
-  in the UI for session entities. *Done when:* purge/remove/replay either work on session entities
-  or are clearly unavailable, with no silent exception.
+- [x] **A1 — Handle session-enabled entities `[M]`** — ✅ shipped: purge/replay/remove detect
+  `RequiresSession` (admin client, cached) and route to session receivers — `AcceptNextSession` drain
+  (`ReceiveAndDelete`) for purge, `PeekLock` + complete + resend for replay, hold-and-scan for remove;
+  "no more sessions" = `ServiceTimeout`. Replayed messages preserve `SessionId`. Non-session paths
+  unchanged; unit tests cover the DLQ paths + replay mapping.
+  ⚠️ **Not runtime-verified** against a live session-enabled namespace (esp. the dead-letter paths) —
+  verify before relying on it; **D1** (emulator tests) would let us cover this properly.
 
 - [ ] **A2 — Push snapshot paging into the infra layer (one receiver) `[M]`**
   `PeekSnapshotAsync` currently creates a fresh receiver per page via `PeekSelectedMessagesAsync`.
