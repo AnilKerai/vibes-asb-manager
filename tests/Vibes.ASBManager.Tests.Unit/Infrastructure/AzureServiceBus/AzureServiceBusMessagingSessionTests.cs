@@ -3,19 +3,10 @@ using Vibes.ASBManager.Infrastructure.AzureServiceBus.ServiceBus;
 
 namespace Vibes.ASBManager.Tests.Unit.Infrastructure.AzureServiceBus;
 
-// Covers the testable pieces of session support: the dead-letter sub-queue paths (used to accept a
-// session on the DLQ) and the replay-message mapping. The session receive flows themselves require a
-// live or emulated broker and are intentionally not covered here.
+// Covers the replay-message mapping (the one session-specific bit that's pure). The session receive
+// flows require a broker and are covered by the emulator-backed integration tests.
 public class AzureServiceBusMessagingSessionTests
 {
-    [Fact]
-    public void QueueDeadLetterPath_uses_the_documented_subqueue_suffix()
-        => Assert.Equal("orders/$deadletterqueue", AzureServiceBusMessaging.QueueDeadLetterPath("orders"));
-
-    [Fact]
-    public void SubscriptionDeadLetterPath_uses_the_documented_path()
-        => Assert.Equal("events/Subscriptions/audit/$deadletterqueue", AzureServiceBusMessaging.SubscriptionDeadLetterPath("events", "audit"));
-
     [Fact]
     public void BuildReplayMessage_preserves_session_id_and_core_properties()
     {

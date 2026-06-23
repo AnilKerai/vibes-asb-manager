@@ -44,13 +44,18 @@ Front-loaded with high-value correctness; bigger structural/feature work later.
 
 ## A. Azure Service Bus correctness
 
-- [x] **A1 — Handle session-enabled entities `[M]`** — ✅ shipped: purge/replay/remove detect
-  `RequiresSession` (admin client, cached) and route to session receivers — `AcceptNextSession` drain
-  (`ReceiveAndDelete`) for purge, `PeekLock` + complete + resend for replay, hold-and-scan for remove;
-  "no more sessions" = `ServiceTimeout`. Replayed messages preserve `SessionId`. Non-session paths
-  unchanged; unit tests cover the DLQ paths + replay mapping.
-  ⚠️ **Not runtime-verified** against a live session-enabled namespace (esp. the dead-letter paths) —
-  verify before relying on it; **D1** (emulator tests) would let us cover this properly.
+- [x] **A1 — Handle session-enabled entities `[M]`** — ✅ shipped & emulator-verified. Active queue and
+  subscription purges detect a session entity by catching the `InvalidOperationException` a non-session
+  receiver throws against a `RequiresSession` entity, then drain each session via `AcceptNextSession`
+  (`ReceiveAndDelete`); "no more sessions" surfaces as `ServiceTimeout`, bounded by a dedicated
+  short-timeout drain client so a purge doesn't stall ~60s after the last message. Dead-letter ops
+  (purge-DLQ / replay / remove) use **regular** receivers — a session entity's dead-letter sub-queue is
+  not itself session-scoped (`AcceptNextSession` on it throws "Cannot create a MessageSession for a
+  sub-queue"). Replayed messages preserve `SessionId` so the session entity accepts the resend.
+  Non-session paths unchanged.
+  ✅ Verified against the Azure Service Bus emulator — `tests/Vibes.ASBManager.Tests.Integration` (5
+  tests: session queue & subscription purge, session-DLQ purge, session replay round-trip, plain-queue
+  regression). The pure replay-message mapping is also covered by a unit test.
 
 - [ ] **A2 — Push snapshot paging into the infra layer (one receiver) `[M]`**
   `PeekSnapshotAsync` currently creates a fresh receiver per page via `PeekSelectedMessagesAsync`.

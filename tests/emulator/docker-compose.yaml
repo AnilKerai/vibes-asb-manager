@@ -1,0 +1,46 @@
+name: asb-emulator
+
+# Local Azure Service Bus emulator used by the integration tests
+# (tests/Vibes.ASBManager.Tests.Integration). The topology in config.json defines the
+# session-enabled and plain entities the tests exercise. Self-contained: relative config
+# path and inlined dev credentials, so `docker compose up` works from any clone.
+#
+# The emulator image is amd64-only; on Apple Silicon Docker runs it under emulation
+# (the `platform` keys below), which works but is slower to start.
+services:
+  emulator:
+    container_name: asb-emulator
+    image: mcr.microsoft.com/azure-messaging/servicebus-emulator:latest
+    platform: linux/amd64
+    pull_policy: always
+    volumes:
+      - "./config.json:/ServiceBus_Emulator/ConfigFiles/Config.json"
+    ports:
+      - "5672:5672"   # AMQP data plane (the tests connect here)
+      - "5300:5300"   # management / health endpoint
+    environment:
+      SQL_SERVER: mssql
+      MSSQL_SA_PASSWORD: "Local!Emulator1"
+      ACCEPT_EULA: "Y"
+      EMULATOR_HTTP_PORT: 5300
+    depends_on:
+      - mssql
+    networks:
+      sb-emulator:
+        aliases:
+          - sb-emulator
+
+  mssql:
+    container_name: asb-emulator-mssql
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    platform: linux/amd64
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "Local!Emulator1"
+    networks:
+      sb-emulator:
+        aliases:
+          - mssql
+
+networks:
+  sb-emulator:
