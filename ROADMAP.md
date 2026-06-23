@@ -30,10 +30,10 @@ cleanup; **E4** removed unused `DataProtection.Abstractions`.
 ## Suggested order
 
 Front-loaded with high-value correctness; bigger structural/feature work later.
-(A1, A2, A3, B1, C1, C2/C3/C4, D1 and the E-series are done — see Recently shipped above.)
+(A1, A2, A3, B1, B2, C1, C2/C3/C4, D1 and the E-series are done — see Recently shipped above.)
 
 1. **B3** — connection-handle abstraction + Microsoft Entra ID auth (biggest feature unlock)
-2. **B2 / D2** — opportunistic polish
+2. **D2** — opportunistic polish (extract more pure logic for tests)
 
 ---
 
@@ -86,12 +86,14 @@ Front-loaded with high-value correctness; bigger structural/feature work later.
   ```
   *Done when:* one instance per concrete class is shared across all its interfaces.
 
-- [ ] **B2 — Evict cached clients on connection edit/delete `[S]`**
-  Clients are cached by connection string and disposed only at shutdown; editing/deleting a
-  connection leaves the old `ServiceBusClient` alive. *Where:* `GetClient` caches in
-  `AzureServiceBusMessaging` / `AzureServiceBusAdmin`; connection CRUD in `JsonConnectionStore` /
-  `Connections.razor`. *Approach:* expose an eviction hook keyed by connection string, called on
-  save/delete (cleaner after B3).
+- [x] **B2 — Evict cached clients on connection delete `[S]`** — ✅ shipped. A new
+  `IServiceBusClientCache.EvictAsync(connectionString)` is implemented by both cache holders
+  (`AzureServiceBusMessaging` disposes the `ServiceBusClient`; `AzureServiceBusAdmin` drops its
+  entry — the admin client isn't disposable) and forwarded from each in DI, so injecting
+  `IEnumerable<IServiceBusClientCache>` evicts across both. `MainLayout` (the live "Remove from app"
+  path) calls it on delete, so a removed connection's clients no longer linger. Unit-tested: eviction
+  rebuilds the client and leaves others cached, and DI resolves the cache to both instances. (There is
+  no connection-string *edit* flow in the app today; the hook is ready if one is added.)
 
 - [ ] **B3 — Connection-handle abstraction + Microsoft Entra ID auth `[L]`**
   Every infra method takes a raw `connectionString`, coupling all layers to SAS. A handle (keyed by

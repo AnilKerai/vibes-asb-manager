@@ -11,7 +11,7 @@ namespace Vibes.ASBManager.Infrastructure.AzureServiceBus.ServiceBus;
 [ExcludeFromCodeCoverage]
 public sealed class AzureServiceBusMessaging(
     ILogger<AzureServiceBusMessaging> logger
-) : IMessageBrowser, IMessageSender, IMessageMaintenance, IDeadLetterMaintenance, IAsyncDisposable
+) : IMessageBrowser, IMessageSender, IMessageMaintenance, IDeadLetterMaintenance, IServiceBusClientCache, IAsyncDisposable
 {
     private readonly ConcurrentDictionary<string, ServiceBusClient> _clients = new(StringComparer.Ordinal);
     private readonly ILogger<AzureServiceBusMessaging> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -20,6 +20,17 @@ public sealed class AzureServiceBusMessaging(
     // keeps multiple open connections/tabs isolated.
     internal ServiceBusClient GetClient(string connectionString)
         => _clients.GetOrAdd(connectionString, static cs => new ServiceBusClient(cs));
+
+    // Drop (and dispose) the cached client for a connection that's been removed/changed, so its open
+    // AMQP connection doesn't linger. A later request for the same string lazily creates a fresh client.
+    public async ValueTask EvictAsync(string? connectionString, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrEmpty(connectionString)) return;
+        if (_clients.TryRemove(connectionString, out var client))
+        {
+            await client.DisposeAsync().ConfigureAwait(false);
+        }
+    }
 
     // Draining a session-enabled entity ends only when AcceptNextSession finds no more available
     // sessions, which the broker signals by letting the call time out. The shared cached client uses

@@ -4,6 +4,7 @@ using Azure;
 using Azure.Messaging.ServiceBus.Administration;
 using Microsoft.Extensions.Logging;
 using Vibes.ASBManager.Application.Interfaces.Admin;
+using Vibes.ASBManager.Application.Interfaces.Messaging;
 using Vibes.ASBManager.Application.Models;
 
 namespace Vibes.ASBManager.Infrastructure.AzureServiceBus.ServiceBus;
@@ -12,13 +13,21 @@ namespace Vibes.ASBManager.Infrastructure.AzureServiceBus.ServiceBus;
 public sealed class AzureServiceBusAdmin(
     IRuleFormatter ruleFormatter,
     ILogger<AzureServiceBusAdmin> logger
-) : IQueueAdmin, ITopicAdmin, ISubscriptionAdmin, ISubscriptionRuleAdmin
+) : IQueueAdmin, ITopicAdmin, ISubscriptionAdmin, ISubscriptionRuleAdmin, IServiceBusClientCache
 {
     private readonly ConcurrentDictionary<string, ServiceBusAdministrationClient> _clients = new(StringComparer.Ordinal);
     private readonly ILogger<AzureServiceBusAdmin> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
     private ServiceBusAdministrationClient GetClient(string connectionString)
         => _clients.GetOrAdd(connectionString, static cs => new ServiceBusAdministrationClient(cs));
+
+    // Drop the cached admin client for a removed/changed connection. ServiceBusAdministrationClient
+    // isn't disposable (it's a stateless HTTP client), so removing the entry is all that's needed.
+    public ValueTask EvictAsync(string? connectionString, CancellationToken cancellationToken = default)
+    {
+        if (!string.IsNullOrEmpty(connectionString)) _clients.TryRemove(connectionString, out _);
+        return ValueTask.CompletedTask;
+    }
 
     public async Task CreateQueueAsync(
         string connectionString,

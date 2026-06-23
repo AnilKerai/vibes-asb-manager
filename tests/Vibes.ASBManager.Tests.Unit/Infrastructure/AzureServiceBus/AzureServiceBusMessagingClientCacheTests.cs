@@ -37,4 +37,28 @@ public class AzureServiceBusMessagingClientCacheTests
         Assert.Equal("ns-a.servicebus.windows.net", clientA.FullyQualifiedNamespace);
         Assert.Equal("ns-b.servicebus.windows.net", clientB.FullyQualifiedNamespace);
     }
+
+    [Fact]
+    public async Task Evicting_a_connection_drops_its_cached_client()
+    {
+        await using var messaging = new AzureServiceBusMessaging(NullLogger<AzureServiceBusMessaging>.Instance);
+        var first = messaging.GetClient(ConnA);
+
+        await messaging.EvictAsync(ConnA);
+
+        Assert.NotSame(first, messaging.GetClient(ConnA)); // a fresh client is built after eviction
+    }
+
+    [Fact]
+    public async Task Evicting_one_connection_leaves_others_cached()
+    {
+        await using var messaging = new AzureServiceBusMessaging(NullLogger<AzureServiceBusMessaging>.Instance);
+        var a = messaging.GetClient(ConnA);
+        var b = messaging.GetClient(ConnB);
+
+        await messaging.EvictAsync(ConnA);
+
+        Assert.NotSame(a, messaging.GetClient(ConnA)); // A rebuilt
+        Assert.Same(b, messaging.GetClient(ConnB));    // B untouched
+    }
 }

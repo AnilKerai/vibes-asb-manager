@@ -28,5 +28,10 @@ public static class DependencyInjection
         services.AddSingleton<IMessageBrowser>(sp => sp.GetRequiredService<AzureServiceBusMessaging>());
         services.AddSingleton<IMessageMaintenance>(sp => sp.GetRequiredService<AzureServiceBusMessaging>());
         services.AddSingleton<IDeadLetterMaintenance>(sp => sp.GetRequiredService<AzureServiceBusMessaging>());
+
+        // Both cache a client per connection string; forwarding the cache interface from each lets
+        // connection management evict from all of them (IEnumerable<IServiceBusClientCache>).
+        services.AddSingleton<IServiceBusClientCache>(sp => sp.GetRequiredService<AzureServiceBusAdmin>());
+        services.AddSingleton<IServiceBusClientCache>(sp => sp.GetRequiredService<AzureServiceBusMessaging>());
     }
 }

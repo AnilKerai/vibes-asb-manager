@@ -1,9 +1,11 @@
 @inherits LayoutComponentBase
 @using Vibes.ASBManager.Application.Interfaces.Connection
+@using Vibes.ASBManager.Application.Interfaces.Messaging
 @using Vibes.ASBManager.Web.Models
 @using System.Reflection
 @implements IDisposable
 @inject IConnectionStore ConnectionStore
+@inject IEnumerable<IServiceBusClientCache> ClientCaches
 @inject IDialogService DialogService
 @inject NavigationManager Nav
 @inject ProtectedLocalStorage LocalStorage
@@ -516,6 +518,9 @@
         try
         {
             await ConnectionStore.DeleteAsync(c.Id);
+            // Drop any cached Service Bus clients for this connection so they don't linger.
+            foreach (var cache in ClientCaches)
+                await cache.EvictAsync(c.ConnectionString);
             await LoadConnectionsAsync();
             try
             {

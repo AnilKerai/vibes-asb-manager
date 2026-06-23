@@ -57,4 +57,19 @@ public class DependencyInjectionTests
 
         Assert.NotSame(browser, queueAdmin);
     }
+
+    [Fact]
+    public async Task Client_caches_resolve_to_both_the_messaging_and_admin_instances()
+    {
+        await using var provider = BuildProvider();
+
+        var caches = provider.GetServices<IServiceBusClientCache>().ToList();
+        object browser = provider.GetRequiredService<IMessageBrowser>();
+        object queueAdmin = provider.GetRequiredService<IQueueAdmin>();
+
+        // Eviction must reach every cache holder (data plane + admin).
+        Assert.Equal(2, caches.Count);
+        Assert.Contains(caches, c => ReferenceEquals(c, browser));
+        Assert.Contains(caches, c => ReferenceEquals(c, queueAdmin));
+    }
 }
