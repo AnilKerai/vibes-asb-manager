@@ -234,15 +234,10 @@
             var subs = await SubscriptionAdmin.ListSubscriptionsAsync(_connectionString!, topicName);
             _topicSubscriptions[topicName] = subs;
             // Select the topic and keep it expanded
-            StopLiveActive();
-            StopLiveDlq();
-            _activeMessages.Clear();
-            _dlqMessages.Clear();
             _expandedTopicNames.Add(topicName);
             _selectedTreeValue = $"topic:{topicName}";
             await LoadSettingsForSelection();
-            await RefreshActiveAsync();
-            await RefreshDlqAsync();
+            await _messages.SetTargetAsync(BuildMessageTarget());
             await InvokeAsync(StateHasChanged);
         }
         catch (Exception ex)
@@ -255,20 +250,14 @@
     {
         if (string.IsNullOrWhiteSpace(_connectionString)) return;
         if (!await ConfirmPurgeAsync("Purge Active Messages", $"<b>all</b> active messages from subscription '<b>{topicName}/{subscriptionName}</b>'")) return;
-        var connectionString = _connectionString!;
-        await RunPurgeAsync(isDeadLetter: false, $"{topicName}/{subscriptionName}",
-            (progress, token) => MessageMaintenance.PurgeSubscriptionAsync(connectionString, topicName, subscriptionName, progress: progress, cancellationToken: token),
-            ClearActiveAfterPurgeAsync);
+        await _messages.PurgeActiveAsync();
     }
 
     private async Task ConfirmPurgeSubscriptionDlq(string topicName, string subscriptionName)
     {
         if (string.IsNullOrWhiteSpace(_connectionString)) return;
         if (!await ConfirmPurgeAsync("Purge DLQ Messages", $"<b>all</b> messages from the dead-letter subqueue of '<b>{topicName}/{subscriptionName}</b>'")) return;
-        var connectionString = _connectionString!;
-        await RunPurgeAsync(isDeadLetter: true, $"{topicName}/{subscriptionName}",
-            (progress, token) => DeadLetterMaintenance.PurgeSubscriptionDeadLetterAsync(connectionString, topicName, subscriptionName, progress: progress, cancellationToken: token),
-            ClearDlqAfterPurgeAsync);
+        await _messages.PurgeDlqAsync();
     }
 
     private async Task<bool> ConfirmPurgeAsync(string title, string whatMarkup)
@@ -282,89 +271,10 @@
         return confirm == true;
     }
 
-    // Runs a purge that drains to empty (bounded by MessagingDefaults.PurgeCeiling): shows the
-    // busy/progress state, reports the true total, and tolerates cancellation (e.g. the view being
-    // disposed mid-purge).
-    private async Task RunPurgeAsync(bool isDeadLetter, string entityLabel, Func<IProgress<int>, CancellationToken, Task<int>> purge, Func<Task> clearAfter)
-    {
-        if (isDeadLetter) _purgingDlq = true; else _purgingActive = true;
-        _purgeProgress = 0;
-        try { await InvokeAsync(StateHasChanged); } catch (Exception ex) { Logger?.LogDebug(ex, "Failed to render purge busy state."); }
-
-        var token = StartPurgeCancellation();
-        var progress = new Progress<int>(n => { _purgeProgress = n; _ = InvokeAsync(StateHasChanged); });
-        try
-        {
-            var purged = await purge(progress, token);
-            Snackbar.Add(PurgeResultMessage(purged, entityLabel, isDeadLetter), Severity.Success);
-            await clearAfter();
-        }
-        catch (OperationCanceledException)
-        {
-            if (!_disposed) Snackbar.Add($"Purge of {entityLabel} cancelled after {_purgeProgress:N0} messages.", Severity.Info);
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"Failed to purge {entityLabel}: {ex.Message}", Severity.Error);
-        }
-        finally
-        {
-            if (isDeadLetter) _purgingDlq = false; else _purgingActive = false;
-            StopPurge();
-        }
-    }
-
-    private static string PurgeResultMessage(int purged, string entity, bool isDeadLetter)
-    {
-        var what = isDeadLetter ? "DLQ messages" : "messages";
-        return purged >= MessagingDefaults.PurgeCeiling
-            ? $"Purged {purged:N0} {what} from {entity} (ceiling reached — more may remain; purge again to continue)."
-            : $"Purged {purged:N0} {what} from {entity}.";
-    }
-
-    private async Task ClearActiveAfterPurgeAsync()
-    {
-        _pendingActiveClear = true;
-        _activeMessages.Clear();
-        try { await InvokeAsync(StateHasChanged); }
-        catch (Exception ex)
-        {
-            Logger?.LogDebug(ex, "Failed to refresh UI after active purge.");
-        }
-        await RefreshActiveIfNeededAsync();
-        await RefreshCountsAsync();
-    }
-
-    private async Task ClearDlqAfterPurgeAsync()
-    {
-        _pendingDlqClear = true;
-        _dlqMessages.Clear();
-        try { await InvokeAsync(StateHasChanged); }
-        catch (Exception ex)
-        {
-            Logger?.LogDebug(ex, "Failed to refresh UI after DLQ purge.");
-        }
-        await RefreshDlqIfNeededAsync();
-        await RefreshCountsAsync();
-    }
-
-    private async Task RefreshAfterReplayAsync()
-    {
-        await RefreshActiveIfNeededAsync();
-        await RefreshDlqIfNeededAsync();
-        await RefreshCountsAsync();
-    }
-
     private void ResetState()
     {
         _connectionString = Connection?.ConnectionString;
-        StopLiveActive();
-        StopLiveDlq();
-        StopCountsPolling();
-        _activeMessages.Clear();
-        _dlqMessages.Clear();
-        _activeCount = null;
-        _dlqCount = null;
+        _messages.Reset();
         _queues = null;
         _topics = null;
 
@@ -594,8 +504,8 @@
                     });
                     if (CanRefreshMessages && sent > 0)
                     {
-                        await RefreshActiveAsync(token);
-                        await RefreshCountsAsync(token);
+                        await _messages.RefreshActiveAsync(token);
+                        await _messages.RefreshCountsAsync(token);
                         try { await InvokeAsync(StateHasChanged); }
                         catch (Exception ex)
                         {
@@ -611,20 +521,14 @@
     {
         if (string.IsNullOrWhiteSpace(_connectionString)) return;
         if (!await ConfirmPurgeAsync("Purge Active Messages", $"<b>all</b> active messages from queue '<b>{queueName}</b>'")) return;
-        var connectionString = _connectionString!;
-        await RunPurgeAsync(isDeadLetter: false, queueName,
-            (progress, token) => MessageMaintenance.PurgeQueueAsync(connectionString, queueName, progress: progress, cancellationToken: token),
-            ClearActiveAfterPurgeAsync);
+        await _messages.PurgeActiveAsync();
     }
 
     private async Task ConfirmPurgeQueueDlq(string queueName)
     {
         if (string.IsNullOrWhiteSpace(_connectionString)) return;
         if (!await ConfirmPurgeAsync("Purge DLQ Messages", $"<b>all</b> messages from the dead-letter subqueue of '<b>{queueName}</b>'")) return;
-        var connectionString = _connectionString!;
-        await RunPurgeAsync(isDeadLetter: true, queueName,
-            (progress, token) => DeadLetterMaintenance.PurgeQueueDeadLetterAsync(connectionString, queueName, progress: progress, cancellationToken: token),
-            ClearDlqAfterPurgeAsync);
+        await _messages.PurgeDlqAsync();
     }
 
     private async Task ConfirmReplayQueueDlq(string queueName)
@@ -642,7 +546,7 @@
             var connectionString = _connectionString!;
             var replayed = await DeadLetterMaintenance.ReplayQueueDeadLettersAsync(connectionString, queueName, maxMessages: 50);
             Snackbar.Add($"Replayed {replayed} DLQ messages for {queueName}.", Severity.Success);
-            await RefreshAfterReplayAsync();
+            await _messages.RefreshAfterReplayAsync();
         }
         catch (Exception ex)
         {
@@ -665,7 +569,7 @@
             var connectionString = _connectionString!;
             var replayed = await DeadLetterMaintenance.ReplayQueueDeadLettersAsync(connectionString, queueName, maxMessages: int.MaxValue);
             Snackbar.Add($"Resubmitted {replayed} DLQ messages for {queueName}.", Severity.Success);
-            await RefreshAfterReplayAsync();
+            await _messages.RefreshAfterReplayAsync();
         }
         catch (Exception ex)
         {
@@ -688,7 +592,7 @@
             var connectionString = _connectionString!;
             var replayed = await DeadLetterMaintenance.ReplaySubscriptionDeadLettersAsync(connectionString, topicName, subscriptionName, maxMessages: int.MaxValue);
             Snackbar.Add($"Resubmitted {replayed} DLQ messages for {topicName}/{subscriptionName}.", Severity.Success);
-            await RefreshAfterReplayAsync();
+            await _messages.RefreshAfterReplayAsync();
         }
         catch (Exception ex)
         {
@@ -849,19 +753,11 @@
         }
 
         _selectedTreeValue = value;
-        // stop live polling and clear lists on entity switch
-        StopLiveActive();
-        StopLiveDlq();
-        StopCountsPolling();
-        _activeMessages.Clear();
-        _dlqMessages.Clear();
         await LoadSettingsForSelection();
         await LoadRulesForSelection();
-        await RefreshCountsAsync();
-        StartCountsPolling();
-        // auto-load message lists for the new selection
-        await RefreshActiveAsync();
-        await RefreshDlqAsync();
+        // Hand the new selection to the message browser: it stops polling, clears, reloads counts and
+        // lists, and resumes counts polling.
+        await _messages.SetTargetAsync(BuildMessageTarget());
         StateHasChanged();
     }
 
@@ -1176,8 +1072,7 @@
             _queues = await QueueAdmin.ListQueuesAsync(_connectionString!);
             _selectedTreeValue = $"queue:{name}";
             await LoadSettingsForSelection();
-            await RefreshActiveAsync();
-            await RefreshDlqAsync();
+            await _messages.SetTargetAsync(BuildMessageTarget());
         }
         catch (Exception ex)
         {

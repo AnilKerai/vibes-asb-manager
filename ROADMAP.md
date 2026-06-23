@@ -104,10 +104,14 @@ Front-loaded with high-value correctness; bigger structural/feature work later.
 
 ## C. Blazor component
 
-- [ ] **C1 — Decompose `EntitiesView` `[L]`**
-  ~1,300 + ~580 lines doing tree, selection, settings, rules, browsing, sending, purging.
-  *Approach:* extract a self-contained `MessagesPanel` owning the browse/live/counts state (the
-  tree is already split out; `MessageSnapshotPager` is the extraction pattern to follow).
+- [ ] **C1 — Decompose `EntitiesView` `[L]`** — 🚧 in progress (staged). **Stage 1 shipped:** the
+  browse / live / counts / purge state + operations are extracted into a plain, testable
+  `MessageBrowsingController` (UI-free — it raises `StateChanged` / `Notify` rather than touching the
+  renderer); `EntitiesView.MessageBrowser.cs` is now a thin adapter that delegates to it, and the pure
+  bits (snapshot target, DLQ reconcile, error-toast dedup, purge text) are unit-tested. **Stage 2
+  (pending):** wrap the controller in a self-contained `MessagesPanel` component so `EntitiesView`
+  just hosts `<MessagesPanel>`. (Live UI behaviour needs a real namespace to verify — the emulator's
+  management API, which the entity tree/counts use, is limited.)
 
 - [x] **C2 — Replace the polling loops with `PeriodicTimer` `[M]`** — ✅ shipped: the three loops
   (active, dlq, counts) now run through one shared `RunPollLoop` helper using `PeriodicTimer` (no
