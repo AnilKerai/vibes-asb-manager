@@ -19,12 +19,28 @@
         <span class="ms-1">Resubmit DLQ</span>
     </MudButton>
     <MudButton Variant="Variant.Outlined" Color="Color.Warning" Disabled="@PurgeActiveDisabled" OnClick="@OnPurgeActive">
-        <MudIcon Icon="@Icons.Material.Filled.DeleteSweep" />
-        <span class="ms-1">Purge Active</span>
+        @if (PurgingActive)
+        {
+            <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+            <span class="ms-1">Purging… @PurgeProgress.ToString("N0")</span>
+        }
+        else
+        {
+            <MudIcon Icon="@Icons.Material.Filled.DeleteSweep" />
+            <span class="ms-1">Purge Active</span>
+        }
     </MudButton>
     <MudButton Variant="Variant.Outlined" Color="Color.Warning" Disabled="@PurgeDlqDisabled" OnClick="@OnPurgeDlq">
-        <MudIcon Icon="@Icons.Material.Filled.DeleteForever" />
-        <span class="ms-1">Purge DLQ</span>
+        @if (PurgingDlq)
+        {
+            <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+            <span class="ms-1">Purging… @PurgeProgress.ToString("N0")</span>
+        }
+        else
+        {
+            <MudIcon Icon="@Icons.Material.Filled.DeleteForever" />
+            <span class="ms-1">Purge DLQ</span>
+        }
     </MudButton>
 
     @if (ShowCreateQueue)
@@ -94,6 +110,10 @@
     [Parameter] public bool SelectedIsSubscription { get; set; }
 
     [Parameter] public bool LiveOn { get; set; }
+
+    [Parameter] public bool PurgingActive { get; set; }
+    [Parameter] public bool PurgingDlq { get; set; }
+    [Parameter] public int PurgeProgress { get; set; }
 
     [Parameter] public EventCallback OnRefresh { get; set; }
     [Parameter] public EventCallback OnSend { get; set; }

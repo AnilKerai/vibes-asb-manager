@@ -11,6 +11,7 @@
 @inject ILogger<EntitiesView> Logger
 @using Vibes.ASBManager.Application.Interfaces.Admin
 @using Vibes.ASBManager.Application.Interfaces.Messaging
+@using Vibes.ASBManager.Application.Messaging
 @using Vibes.ASBManager.Web.Models
 @implements IDisposable
 
@@ -63,6 +64,9 @@
                 SelectedIsTopic="@SelectedIsTopic"
                 SelectedIsSubscription="@SelectedIsSubscription"
                 LiveOn="@(_liveActive || _liveDlq)"
+                PurgingActive="@_purgingActive"
+                PurgingDlq="@_purgingDlq"
+                PurgeProgress="@_purgeProgress"
                 OnRefresh="@RefreshEntities"
                 OnSend="@SendToSelected"
                 OnPurgeActive="@PurgeActiveSelected"
@@ -250,47 +254,72 @@
     private async Task ConfirmPurgeSubscription(string topicName, string subscriptionName)
     {
         if (string.IsNullOrWhiteSpace(_connectionString)) return;
-        var confirm = await DialogService.ShowMessageBox(
-            title: "Purge Active Messages",
-            markupMessage: (MarkupString)$"This will delete active messages from subscription '<b>{topicName}/{subscriptionName}</b>' (up to the configured batch). Continue?",
-            yesText: "Purge",
-            cancelText: "Cancel",
-            options: new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small });
-        if (confirm != true) return;
-        try
-        {
-            var connectionString = _connectionString!;
-            var purged = await MessageMaintenance.PurgeSubscriptionAsync(connectionString, topicName, subscriptionName, maxMessages: 1000);
-            Snackbar.Add($"Purged {purged} messages from {topicName}/{subscriptionName}.", Severity.Success);
-            await ClearActiveAfterPurgeAsync();
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"Failed to purge subscription: {ex.Message}", Severity.Error);
-        }
+        if (!await ConfirmPurgeAsync("Purge Active Messages", $"<b>all</b> active messages from subscription '<b>{topicName}/{subscriptionName}</b>'")) return;
+        var connectionString = _connectionString!;
+        await RunPurgeAsync(isDeadLetter: false, $"{topicName}/{subscriptionName}",
+            (progress, token) => MessageMaintenance.PurgeSubscriptionAsync(connectionString, topicName, subscriptionName, progress: progress, cancellationToken: token),
+            ClearActiveAfterPurgeAsync);
     }
 
     private async Task ConfirmPurgeSubscriptionDlq(string topicName, string subscriptionName)
     {
         if (string.IsNullOrWhiteSpace(_connectionString)) return;
+        if (!await ConfirmPurgeAsync("Purge DLQ Messages", $"<b>all</b> messages from the dead-letter subqueue of '<b>{topicName}/{subscriptionName}</b>'")) return;
+        var connectionString = _connectionString!;
+        await RunPurgeAsync(isDeadLetter: true, $"{topicName}/{subscriptionName}",
+            (progress, token) => DeadLetterMaintenance.PurgeSubscriptionDeadLetterAsync(connectionString, topicName, subscriptionName, progress: progress, cancellationToken: token),
+            ClearDlqAfterPurgeAsync);
+    }
+
+    private async Task<bool> ConfirmPurgeAsync(string title, string whatMarkup)
+    {
         var confirm = await DialogService.ShowMessageBox(
-            title: "Purge DLQ Messages",
-            markupMessage: (MarkupString)$"This will delete messages from the Dead-letter subqueue of '<b>{topicName}/{subscriptionName}</b>' (up to the configured batch). Continue?",
+            title: title,
+            markupMessage: (MarkupString)$"This will delete {whatMarkup}. Continue?",
             yesText: "Purge",
             cancelText: "Cancel",
             options: new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small });
-        if (confirm != true) return;
+        return confirm == true;
+    }
+
+    // Runs a purge that drains to empty (bounded by MessagingDefaults.PurgeCeiling): shows the
+    // busy/progress state, reports the true total, and tolerates cancellation (e.g. the view being
+    // disposed mid-purge).
+    private async Task RunPurgeAsync(bool isDeadLetter, string entityLabel, Func<IProgress<int>, CancellationToken, Task<int>> purge, Func<Task> clearAfter)
+    {
+        if (isDeadLetter) _purgingDlq = true; else _purgingActive = true;
+        _purgeProgress = 0;
+        try { await InvokeAsync(StateHasChanged); } catch (Exception ex) { Logger?.LogDebug(ex, "Failed to render purge busy state."); }
+
+        var token = StartPurgeCancellation();
+        var progress = new Progress<int>(n => { _purgeProgress = n; _ = InvokeAsync(StateHasChanged); });
         try
         {
-            var connectionString = _connectionString!;
-            var purged = await DeadLetterMaintenance.PurgeSubscriptionDeadLetterAsync(connectionString, topicName, subscriptionName, maxMessages: 1000);
-            Snackbar.Add($"Purged {purged} DLQ messages from {topicName}/{subscriptionName}.", Severity.Success);
-            await ClearDlqAfterPurgeAsync();
+            var purged = await purge(progress, token);
+            Snackbar.Add(PurgeResultMessage(purged, entityLabel, isDeadLetter), Severity.Success);
+            await clearAfter();
+        }
+        catch (OperationCanceledException)
+        {
+            if (!_disposed) Snackbar.Add($"Purge of {entityLabel} cancelled after {_purgeProgress:N0} messages.", Severity.Info);
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Failed to purge subscription DLQ: {ex.Message}", Severity.Error);
+            Snackbar.Add($"Failed to purge {entityLabel}: {ex.Message}", Severity.Error);
         }
+        finally
+        {
+            if (isDeadLetter) _purgingDlq = false; else _purgingActive = false;
+            StopPurge();
+        }
+    }
+
+    private static string PurgeResultMessage(int purged, string entity, bool isDeadLetter)
+    {
+        var what = isDeadLetter ? "DLQ messages" : "messages";
+        return purged >= MessagingDefaults.PurgeCeiling
+            ? $"Purged {purged:N0} {what} from {entity} (ceiling reached — more may remain; purge again to continue)."
+            : $"Purged {purged:N0} {what} from {entity}.";
     }
 
     private async Task ClearActiveAfterPurgeAsync()
@@ -581,47 +610,21 @@
     private async Task ConfirmPurgeQueue(string queueName)
     {
         if (string.IsNullOrWhiteSpace(_connectionString)) return;
-        var confirm = await DialogService.ShowMessageBox(
-            title: "Purge Active Messages",
-            markupMessage: (MarkupString)$"This will delete active messages from queue '<b>{queueName}</b>' (up to the configured batch). Continue?",
-            yesText: "Purge",
-            cancelText: "Cancel",
-            options: new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small });
-        if (confirm != true) return;
-        try
-        {
-            var connectionString = _connectionString!;
-            var purged = await MessageMaintenance.PurgeQueueAsync(connectionString, queueName, maxMessages: 1000);
-            Snackbar.Add($"Purged {purged} messages from {queueName}.", Severity.Success);
-            await ClearActiveAfterPurgeAsync();
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"Failed to purge queue: {ex.Message}", Severity.Error);
-        }
+        if (!await ConfirmPurgeAsync("Purge Active Messages", $"<b>all</b> active messages from queue '<b>{queueName}</b>'")) return;
+        var connectionString = _connectionString!;
+        await RunPurgeAsync(isDeadLetter: false, queueName,
+            (progress, token) => MessageMaintenance.PurgeQueueAsync(connectionString, queueName, progress: progress, cancellationToken: token),
+            ClearActiveAfterPurgeAsync);
     }
 
     private async Task ConfirmPurgeQueueDlq(string queueName)
     {
         if (string.IsNullOrWhiteSpace(_connectionString)) return;
-        var confirm = await DialogService.ShowMessageBox(
-            title: "Purge DLQ Messages",
-            markupMessage: (MarkupString)$"This will delete messages from the Dead-letter subqueue of '<b>{queueName}</b>' (up to the configured batch). Continue?",
-            yesText: "Purge",
-            cancelText: "Cancel",
-            options: new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small });
-        if (confirm != true) return;
-        try
-        {
-            var connectionString = _connectionString!;
-            var purged = await DeadLetterMaintenance.PurgeQueueDeadLetterAsync(connectionString, queueName, maxMessages: 1000);
-            Snackbar.Add($"Purged {purged} DLQ messages from {queueName}.", Severity.Success);
-            await ClearDlqAfterPurgeAsync();
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"Failed to purge queue DLQ: {ex.Message}", Severity.Error);
-        }
+        if (!await ConfirmPurgeAsync("Purge DLQ Messages", $"<b>all</b> messages from the dead-letter subqueue of '<b>{queueName}</b>'")) return;
+        var connectionString = _connectionString!;
+        await RunPurgeAsync(isDeadLetter: true, queueName,
+            (progress, token) => DeadLetterMaintenance.PurgeQueueDeadLetterAsync(connectionString, queueName, progress: progress, cancellationToken: token),
+            ClearDlqAfterPurgeAsync);
     }
 
     private async Task ConfirmReplayQueueDlq(string queueName)

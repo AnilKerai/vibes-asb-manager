@@ -30,11 +30,11 @@ cleanup; **E4** removed unused `DataProtection.Abstractions`.
 ## Suggested order
 
 Front-loaded with high-value correctness; bigger structural/feature work later.
-(A1, A2, B1, C2/C3/C4, D1 and the E-series are done — see Recently shipped above.)
+(A1, A2, A3, B1, C2/C3/C4, D1 and the E-series are done — see Recently shipped above.)
 
 1. **C1** — decompose `EntitiesView`
 2. **B3** — connection-handle abstraction + Microsoft Entra ID auth (biggest feature unlock)
-3. **A3 / B2 / D2** — opportunistic polish
+3. **B2 / D2** — opportunistic polish
 
 ---
 
@@ -62,11 +62,15 @@ Front-loaded with high-value correctness; bigger structural/feature work later.
   issues one receiver instead of ~10. Verified by emulator peek-paging tests (queue / queue-DLQ /
   subscription) that force several short pages — the original DLQ partial-batch bug class.
 
-- [ ] **A3 — Make purge cap configurable / loop to count `[S]`**
-  Purge is a best-effort `ReceiveAndDelete` drain hardcoded at `maxMessages: 1000`; large queues
-  need repeated clicks. *Where:* purge methods in `AzureServiceBusMessaging`, call sites in
-  `EntitiesView.razor`. *Approach:* surface the cap as an option, or loop until the runtime count
-  reaches zero with a progress indicator.
+- [x] **A3 — Purge drains to empty, with progress `[S]`** — ✅ shipped. Purge no longer stops at a
+  hardcoded 1000: it drains until the entity is empty, bounded by a high safety ceiling
+  (`MessagingDefaults.PurgeCeiling` = 100,000) so a live/huge entity still terminates and reports
+  rather than looping. The four purge methods take an `IProgress<int>` and report the running total;
+  `EntitiesView` shows a live "Purging… N" count on the button, disables the other actions while a
+  purge runs, and cancels it on dispose. If the ceiling is hit the toast says more may remain. The
+  four near-identical drain loops are unified behind one helper. Emulator tests verify drain-to-empty
+  with progress and that an explicit cap is honoured exactly. (The drain tolerates transient empty
+  `ReceiveAndDelete` batches — a real gap the tests surfaced — before concluding the entity is empty.)
 
 ## B. Client & connection lifecycle
 

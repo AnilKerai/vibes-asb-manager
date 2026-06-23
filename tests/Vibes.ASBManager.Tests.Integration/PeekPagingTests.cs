@@ -23,7 +23,7 @@ public sealed class PeekPagingTests(EmulatorFixture fixture)
     public async Task PeekQueueSnapshot_collects_every_message_across_pages()
     {
         Skip.IfNot(fixture.Available, "Service Bus emulator not reachable on localhost:5672");
-        var messaging = Messaging();
+        await using var messaging = Messaging();
         await messaging.PurgeQueueAsync(EmulatorFixture.ConnectionString, PlainQueue, maxMessages: 1000);
 
         await SendManyAsync(client => client.CreateSender(PlainQueue), count: 50);
@@ -43,7 +43,7 @@ public sealed class PeekPagingTests(EmulatorFixture fixture)
     public async Task PeekQueueDeadLetterSnapshot_collects_every_dead_letter()
     {
         Skip.IfNot(fixture.Available, "Service Bus emulator not reachable on localhost:5672");
-        var messaging = Messaging();
+        await using var messaging = Messaging();
         await messaging.PurgeQueueAsync(EmulatorFixture.ConnectionString, PlainQueue, maxMessages: 1000);
         await messaging.PurgeQueueDeadLetterAsync(EmulatorFixture.ConnectionString, PlainQueue, maxMessages: 1000);
 
@@ -65,7 +65,7 @@ public sealed class PeekPagingTests(EmulatorFixture fixture)
     public async Task PeekSubscriptionSnapshot_collects_every_message_across_pages()
     {
         Skip.IfNot(fixture.Available, "Service Bus emulator not reachable on localhost:5672");
-        var messaging = Messaging();
+        await using var messaging = Messaging();
         await messaging.PurgeSubscriptionAsync(EmulatorFixture.ConnectionString, Topic, PlainSubscription, maxMessages: 1000);
 
         // Topic t1 also fans out to a session-required subscription, so stamp a SessionId to keep

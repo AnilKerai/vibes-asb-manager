@@ -278,7 +278,7 @@ public sealed class AzureServiceBusMessaging(
     // queue/subscription is session-scoped; the dead-letter sub-queue is read with a regular receiver.
     private delegate Task<ServiceBusSessionReceiver> AcceptNextSession(ServiceBusSessionReceiverOptions options, CancellationToken cancellationToken);
 
-    private static async Task<int> PurgeSessionsAsync(AcceptNextSession acceptNextSession, int maxMessages, CancellationToken cancellationToken)
+    private static async Task<int> PurgeSessionsAsync(AcceptNextSession acceptNextSession, int maxMessages, IProgress<int>? progress, CancellationToken cancellationToken)
     {
         var options = new ServiceBusSessionReceiverOptions { ReceiveMode = ServiceBusReceiveMode.ReceiveAndDelete };
         var deletedCount = 0;
@@ -302,52 +302,67 @@ public sealed class AzureServiceBusMessaging(
                     var batch = await receiver.ReceiveMessagesAsync(batchSize, TimeSpan.FromSeconds(1), cancellationToken).ConfigureAwait(false);
                     if (batch.Count == 0) break;
                     deletedCount += batch.Count;
+                    progress?.Report(deletedCount);
                 }
             }
         }
         return deletedCount;
     }
 
-    public async Task<int> PurgeQueueAsync(string connectionString, string queueName, int maxMessages = 1000, CancellationToken cancellationToken = default)
+    // A lone empty ReceiveAndDelete batch doesn't mean the entity is drained — broker pacing or a cold
+    // link can return empty while messages remain — so retry a few consecutive empties before concluding
+    // it's empty, mirroring the peek pager. (The session path doesn't need this: its outer
+    // AcceptNextSession loop re-acquires any session that still holds messages.)
+    private const int MaxEmptyDrainReceives = 3;
+
+    // Drains an entity to empty (or the safety ceiling) through one receiver, reporting the running
+    // total. The caller passes a factory rather than a receiver so the first receive still surfaces
+    // InvalidOperationException for a session entity (letting the caller fall back to the session drain).
+    private static async Task<int> DrainEntityAsync(Func<ServiceBusReceiver> receiverFactory, int maxMessages, IProgress<int>? progress, CancellationToken cancellationToken)
+    {
+        await using var receiver = receiverFactory();
+        var deletedCount = 0;
+        var emptyReceives = 0;
+        while (deletedCount < maxMessages && !cancellationToken.IsCancellationRequested)
+        {
+            var batchSize = Math.Min(200, maxMessages - deletedCount);
+            var batch = await receiver.ReceiveMessagesAsync(batchSize, TimeSpan.FromSeconds(1), cancellationToken).ConfigureAwait(false);
+            if (batch.Count == 0)
+            {
+                if (++emptyReceives > MaxEmptyDrainReceives) break;
+                continue;
+            }
+            emptyReceives = 0;
+            deletedCount += batch.Count;
+            progress?.Report(deletedCount);
+        }
+        return deletedCount;
+    }
+
+    public async Task<int> PurgeQueueAsync(string connectionString, string queueName, int maxMessages = MessagingDefaults.PurgeCeiling, IProgress<int>? progress = null, CancellationToken cancellationToken = default)
     {
         var client = GetClient(connectionString);
         try
         {
-            await using var receiver = client.CreateReceiver(queueName, new ServiceBusReceiverOptions { ReceiveMode = ServiceBusReceiveMode.ReceiveAndDelete });
-
-            var deletedCount = 0;
-            while (deletedCount < maxMessages && !cancellationToken.IsCancellationRequested)
-            {
-                var batchSize = Math.Min(200, maxMessages - deletedCount);
-                var receivedBatch = await receiver.ReceiveMessagesAsync(batchSize, TimeSpan.FromSeconds(1), cancellationToken).ConfigureAwait(false);
-                if (receivedBatch.Count == 0) break;
-                deletedCount += receivedBatch.Count;
-            }
-            return deletedCount;
+            return await DrainEntityAsync(
+                () => client.CreateReceiver(queueName, new ServiceBusReceiverOptions { ReceiveMode = ServiceBusReceiveMode.ReceiveAndDelete }),
+                maxMessages, progress, cancellationToken).ConfigureAwait(false);
         }
         catch (InvalidOperationException)
         {
             // Session-enabled queue: a non-session receiver can't receive from it. Drain each session
             // with a short-timeout client so the terminal "no more sessions" doesn't stall the purge.
             await using var sessionClient = CreateSessionDrainClient(connectionString);
-            return await PurgeSessionsAsync((options, token) => sessionClient.AcceptNextSessionAsync(queueName, options, token), maxMessages, cancellationToken).ConfigureAwait(false);
+            return await PurgeSessionsAsync((options, token) => sessionClient.AcceptNextSessionAsync(queueName, options, token), maxMessages, progress, cancellationToken).ConfigureAwait(false);
         }
     }
 
-    public async Task<int> PurgeQueueDeadLetterAsync(string connectionString, string queueName, int maxMessages = 1000, CancellationToken cancellationToken = default)
+    public async Task<int> PurgeQueueDeadLetterAsync(string connectionString, string queueName, int maxMessages = MessagingDefaults.PurgeCeiling, IProgress<int>? progress = null, CancellationToken cancellationToken = default)
     {
         var client = GetClient(connectionString);
-        await using var receiver = client.CreateReceiver(queueName, new ServiceBusReceiverOptions { SubQueue = SubQueue.DeadLetter, ReceiveMode = ServiceBusReceiveMode.ReceiveAndDelete });
-
-        var deletedCount = 0;
-        while (deletedCount < maxMessages && !cancellationToken.IsCancellationRequested)
-        {
-            var batchSize = Math.Min(200, maxMessages - deletedCount);
-            var receivedBatch = await receiver.ReceiveMessagesAsync(batchSize, TimeSpan.FromSeconds(1), cancellationToken).ConfigureAwait(false);
-            if (receivedBatch.Count == 0) break;
-            deletedCount += receivedBatch.Count;
-        }
-        return deletedCount;
+        return await DrainEntityAsync(
+            () => client.CreateReceiver(queueName, new ServiceBusReceiverOptions { SubQueue = SubQueue.DeadLetter, ReceiveMode = ServiceBusReceiveMode.ReceiveAndDelete }),
+            maxMessages, progress, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<int> ReplayQueueDeadLettersAsync(string connectionString, string queueName, int maxMessages = 50, CancellationToken cancellationToken = default)
@@ -432,46 +447,30 @@ public sealed class AzureServiceBusMessaging(
         return receivedMessage is null ? null : MapDetails(receivedMessage);
     }
 
-    public async Task<int> PurgeSubscriptionAsync(string connectionString, string topicName, string subscriptionName, int maxMessages = 1000, CancellationToken cancellationToken = default)
+    public async Task<int> PurgeSubscriptionAsync(string connectionString, string topicName, string subscriptionName, int maxMessages = MessagingDefaults.PurgeCeiling, IProgress<int>? progress = null, CancellationToken cancellationToken = default)
     {
         var client = GetClient(connectionString);
         try
         {
-            await using var receiver = client.CreateReceiver(topicName, subscriptionName, new ServiceBusReceiverOptions { ReceiveMode = ServiceBusReceiveMode.ReceiveAndDelete });
-
-            var deletedCount = 0;
-            while (deletedCount < maxMessages && !cancellationToken.IsCancellationRequested)
-            {
-                var batchSize = Math.Min(200, maxMessages - deletedCount);
-                var receivedBatch = await receiver.ReceiveMessagesAsync(batchSize, TimeSpan.FromSeconds(1), cancellationToken).ConfigureAwait(false);
-                if (receivedBatch.Count == 0) break;
-                deletedCount += receivedBatch.Count;
-            }
-            return deletedCount;
+            return await DrainEntityAsync(
+                () => client.CreateReceiver(topicName, subscriptionName, new ServiceBusReceiverOptions { ReceiveMode = ServiceBusReceiveMode.ReceiveAndDelete }),
+                maxMessages, progress, cancellationToken).ConfigureAwait(false);
         }
         catch (InvalidOperationException)
         {
             // Session-enabled subscription: a non-session receiver can't receive from it. Drain each
             // session with a short-timeout client so the terminal "no more sessions" doesn't stall it.
             await using var sessionClient = CreateSessionDrainClient(connectionString);
-            return await PurgeSessionsAsync((options, token) => sessionClient.AcceptNextSessionAsync(topicName, subscriptionName, options, token), maxMessages, cancellationToken).ConfigureAwait(false);
+            return await PurgeSessionsAsync((options, token) => sessionClient.AcceptNextSessionAsync(topicName, subscriptionName, options, token), maxMessages, progress, cancellationToken).ConfigureAwait(false);
         }
     }
 
-    public async Task<int> PurgeSubscriptionDeadLetterAsync(string connectionString, string topicName, string subscriptionName, int maxMessages = 1000, CancellationToken cancellationToken = default)
+    public async Task<int> PurgeSubscriptionDeadLetterAsync(string connectionString, string topicName, string subscriptionName, int maxMessages = MessagingDefaults.PurgeCeiling, IProgress<int>? progress = null, CancellationToken cancellationToken = default)
     {
         var client = GetClient(connectionString);
-        await using var receiver = client.CreateReceiver(topicName, subscriptionName, new ServiceBusReceiverOptions { SubQueue = SubQueue.DeadLetter, ReceiveMode = ServiceBusReceiveMode.ReceiveAndDelete });
-
-        var deletedCount = 0;
-        while (deletedCount < maxMessages && !cancellationToken.IsCancellationRequested)
-        {
-            var batchSize = Math.Min(200, maxMessages - deletedCount);
-            var receivedBatch = await receiver.ReceiveMessagesAsync(batchSize, TimeSpan.FromSeconds(1), cancellationToken).ConfigureAwait(false);
-            if (receivedBatch.Count == 0) break;
-            deletedCount += receivedBatch.Count;
-        }
-        return deletedCount;
+        return await DrainEntityAsync(
+            () => client.CreateReceiver(topicName, subscriptionName, new ServiceBusReceiverOptions { SubQueue = SubQueue.DeadLetter, ReceiveMode = ServiceBusReceiveMode.ReceiveAndDelete }),
+            maxMessages, progress, cancellationToken).ConfigureAwait(false);
     }
 
     private static async Task<ServiceBusReceivedMessage?> PeekOneBySequenceAsync(ServiceBusReceiver receiver, long sequenceNumber, CancellationToken cancellationToken)

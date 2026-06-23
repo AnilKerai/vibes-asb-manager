@@ -40,6 +40,13 @@ public partial class EntitiesView
     private long? _dlqCount;
     private CancellationTokenSource? _countsCts;
     private CancellationTokenSource? _sendCts;
+
+    // Purge progress/cancellation. A purge drains to empty (bounded by MessagingDefaults.PurgeCeiling),
+    // so it can take a while on a large entity; surface a running count and cancel it on dispose.
+    private bool _purgingActive;
+    private bool _purgingDlq;
+    private int _purgeProgress;
+    private CancellationTokenSource? _purgeCts;
     private volatile bool _disposed; // set on Dispose; read by the background polling loops
     private const int CountsRefreshIntervalMs = 2000;
     private const int LiveRefreshIntervalMs = 2000;
@@ -95,6 +102,28 @@ public partial class EntitiesView
             Logger?.LogDebug(ex, "Failed to dispose send cancellation token.");
         }
         _sendCts = null;
+    }
+
+    private CancellationToken StartPurgeCancellation()
+    {
+        StopPurge();
+        _purgeCts = new CancellationTokenSource();
+        return _purgeCts.Token;
+    }
+
+    private void StopPurge()
+    {
+        try { _purgeCts?.Cancel(); }
+        catch (Exception ex)
+        {
+            Logger?.LogDebug(ex, "Failed to cancel purge operation.");
+        }
+        try { _purgeCts?.Dispose(); }
+        catch (Exception ex)
+        {
+            Logger?.LogDebug(ex, "Failed to dispose purge cancellation token.");
+        }
+        _purgeCts = null;
     }
 
     // Active/DLQ refresh and live polling
@@ -525,5 +554,6 @@ public partial class EntitiesView
         StopLiveDlq();
         StopCountsPolling();
         StopSend();
+        StopPurge();
     }
 }

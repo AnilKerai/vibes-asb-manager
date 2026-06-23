@@ -10,10 +10,11 @@ public partial class EntitiesActionBar
     private string LiveButtonIcon => LiveOn ? Icons.Material.Filled.Pause : Icons.Material.Filled.PlayArrow;
     private string LiveButtonText => LiveOn ? "Live On" : "Live";
 
-    private bool SendDisabled => !CanSend;
-    private bool PurgeActiveDisabled => !CanPurgeActive;
-    private bool ResubmitDlqDisabled => !CanResubmitDlq;
-    private bool PurgeDlqDisabled => !CanPurgeDlq;
+    private bool PurgeBusy => PurgingActive || PurgingDlq;
+    private bool SendDisabled => !CanSend || PurgeBusy;
+    private bool PurgeActiveDisabled => !CanPurgeActive || PurgeBusy;
+    private bool ResubmitDlqDisabled => !CanResubmitDlq || PurgeBusy;
+    private bool PurgeDlqDisabled => !CanPurgeDlq || PurgeBusy;
 
     private bool ShowCreateQueue => HasConnection && (SelectedIsRoot || SelectedIsQueuesFolder);
     private bool ShowCreateTopic => HasConnection && (SelectedIsRoot || SelectedIsTopicsFolder);

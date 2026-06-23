@@ -49,7 +49,7 @@ public sealed class SessionOperationsTests(EmulatorFixture fixture)
     public async Task PurgeQueue_drains_a_session_enabled_queue()
     {
         Skip.IfNot(fixture.Available, "Service Bus emulator not reachable on localhost:5672");
-        var messaging = Messaging();
+        await using var messaging = Messaging();
         await DrainQueueAsync(messaging);
 
         await using (var client = Client())
@@ -70,7 +70,7 @@ public sealed class SessionOperationsTests(EmulatorFixture fixture)
     public async Task PurgeQueue_still_drains_a_plain_queue()
     {
         Skip.IfNot(fixture.Available, "Service Bus emulator not reachable on localhost:5672");
-        var messaging = Messaging();
+        await using var messaging = Messaging();
         await messaging.PurgeQueueAsync(EmulatorFixture.ConnectionString, PlainQueue, maxMessages: 100);
 
         await using (var client = Client())
@@ -90,7 +90,7 @@ public sealed class SessionOperationsTests(EmulatorFixture fixture)
     public async Task PurgeDeadLetter_drains_the_dlq_of_a_session_queue()
     {
         Skip.IfNot(fixture.Available, "Service Bus emulator not reachable on localhost:5672");
-        var messaging = Messaging();
+        await using var messaging = Messaging();
         await DrainQueueAsync(messaging);
 
         await using (var client = Client())
@@ -110,7 +110,7 @@ public sealed class SessionOperationsTests(EmulatorFixture fixture)
     public async Task Replay_resends_a_session_dead_letter_back_to_the_queue()
     {
         Skip.IfNot(fixture.Available, "Service Bus emulator not reachable on localhost:5672");
-        var messaging = Messaging();
+        await using var messaging = Messaging();
         await DrainQueueAsync(messaging);
 
         await using (var client = Client())
@@ -132,7 +132,7 @@ public sealed class SessionOperationsTests(EmulatorFixture fixture)
     public async Task PurgeSubscription_drains_a_session_enabled_subscription()
     {
         Skip.IfNot(fixture.Available, "Service Bus emulator not reachable on localhost:5672");
-        var messaging = Messaging();
+        await using var messaging = Messaging();
         await messaging.PurgeSubscriptionAsync(EmulatorFixture.ConnectionString, Topic, SessionSubscription, maxMessages: 100);
 
         await using (var client = Client())
