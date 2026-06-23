@@ -105,16 +105,15 @@ Front-loaded with high-value correctness; bigger structural/feature work later.
   *Approach:* extract a self-contained `MessagesPanel` owning the browse/live/counts state (the
   tree is already split out; `MessageSnapshotPager` is the extraction pattern to follow).
 
-- [ ] **C2 — Replace the polling loops with `PeriodicTimer` `[M]`**
-  Three hand-rolled `Task.Run` + `Task.Delay` loops (active, dlq, counts) with manual CTS juggling.
-  *Where:* `EntitiesView.MessageBrowser.cs` (`StartLive*`, `StartCountsPolling`). *Approach:* use
-  `PeriodicTimer`; since "live" is now snapshot-on-a-timer, fold the two live loops into the counts
-  loop (refresh counts → refresh whichever list is visible).
+- [x] **C2 — Replace the polling loops with `PeriodicTimer` `[M]`** — ✅ shipped: the three loops
+  (active, dlq, counts) now run through one shared `RunPollLoop` helper using `PeriodicTimer` (no
+  per-iteration `Task.Delay`). **Descoped:** truly merging the three loops into one — the shared
+  helper removes the duplication, and a real merge changes live-mode timing/UX that isn't
+  runtime-verifiable without a live namespace. Low value to pursue further.
 
-- [ ] **C3 — Back off / de-duplicate error toasts `[S]`**
-  Failures inside the 2s loops call `Snackbar.Add(...)` every tick — a dropped connection spams a
-  toast every 2 seconds. *Approach:* surface one sticky error and pause/back off polling on repeated
-  failures.
+- [x] **C3 — De-duplicate error toasts `[S]`** — ✅ shipped: refresh failures surface once per
+  distinct message (tracked per active/dlq/counts op, reset on success), so a dropped connection no
+  longer spams a toast every 2s. Interval back-off deferred (low value for a local tool).
 
 - [x] **C4 — Tighten background-thread state access `[S]`** — ✅ shipped (`_disposed` is now `volatile`; `_refreshing*` flags use atomic `Interlocked` guards)
   `_disposed` / `_refreshing*` are plain fields touched by background tasks and the render thread.

@@ -14,6 +14,13 @@ public partial class EntitiesView
     // triggered concurrently from a background polling loop and from a UI action.
     private int _refreshingActive;
     private int _refreshingDlq;
+
+    // Last error surfaced per refresh op; suppresses duplicate toasts when a failure persists
+    // across poll ticks (C3). null = healthy.
+    private string? _activeRefreshError;
+    private string? _dlqRefreshError;
+    private string? _countsRefreshError;
+
     private const int FetchSize = 50; // how many messages to peek per API call
 
     // Upper bound on a single snapshot. Peeking is non-destructive but not free, so we cap
@@ -94,6 +101,61 @@ public partial class EntitiesView
     }
 
     // Active/DLQ refresh and live polling
+
+    // Surface a refresh failure once; suppress repeats of the same message so a persistent failure
+    // doesn't toast on every poll tick. Returns the new "last error" state (null = healthy).
+    private string? NotifyRefreshOutcome(string? lastError, string? message)
+    {
+        if (message is null) return null;
+        if (string.Equals(message, lastError, StringComparison.Ordinal)) return lastError;
+        Snackbar.Add(message, Severity.Error);
+        return message;
+    }
+
+    // Runs tickAsync immediately, then on a fixed cadence on a background task, until the token is
+    // cancelled or the component is disposed. Uses PeriodicTimer (no per-iteration Task.Delay).
+    private void RunPollLoop(CancellationToken token, int intervalMs, Func<CancellationToken, Task> tickAsync)
+    {
+        _ = Task.Run(async () =>
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(intervalMs));
+            try
+            {
+                do
+                {
+                    await tickAsync(token);
+                }
+                while (!_disposed && !token.IsCancellationRequested && await timer.WaitForNextTickAsync(token));
+            }
+            catch (OperationCanceledException)
+            {
+                // expected when polling is stopped or the component is disposed
+            }
+        });
+    }
+
+    private async Task RefreshAndRenderActiveAsync(CancellationToken token)
+    {
+        await RefreshActiveAsync(token);
+        if (_disposed || token.IsCancellationRequested) return;
+        try { await InvokeAsync(StateHasChanged); }
+        catch (Exception ex)
+        {
+            Logger?.LogDebug(ex, "Failed to refresh UI during live active polling.");
+        }
+    }
+
+    private async Task RefreshAndRenderDlqAsync(CancellationToken token)
+    {
+        await RefreshDlqAsync(token);
+        if (_disposed || token.IsCancellationRequested) return;
+        try { await InvokeAsync(StateHasChanged); }
+        catch (Exception ex)
+        {
+            Logger?.LogDebug(ex, "Failed to refresh UI during live DLQ polling.");
+        }
+    }
+
     private async Task RefreshActiveAsync(CancellationToken cancellationToken = default)
     {
         if (!CanRefreshMessages || cancellationToken.IsCancellationRequested) return;
@@ -110,10 +172,11 @@ public partial class EntitiesView
                 .OrderBy(m => m.EnqueuedTime)
                 .ToList();
             ReconcileActiveFromDlq();
+            _activeRefreshError = NotifyRefreshOutcome(_activeRefreshError, null);
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Failed to refresh active messages: {ex.Message}", Severity.Error);
+            _activeRefreshError = NotifyRefreshOutcome(_activeRefreshError, $"Failed to refresh active messages: {ex.Message}");
         }
         finally
         {
@@ -137,10 +200,11 @@ public partial class EntitiesView
                 .OrderBy(m => m.EnqueuedTime)
                 .ToList();
             ReconcileActiveFromDlq();
+            _dlqRefreshError = NotifyRefreshOutcome(_dlqRefreshError, null);
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Failed to refresh DLQ messages: {ex.Message}", Severity.Error);
+            _dlqRefreshError = NotifyRefreshOutcome(_dlqRefreshError, $"Failed to refresh DLQ messages: {ex.Message}");
         }
         finally
         {
@@ -214,10 +278,11 @@ public partial class EntitiesView
             {
                 _dlqMessages.Clear();
             }
+            _countsRefreshError = NotifyRefreshOutcome(_countsRefreshError, null);
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Failed to refresh counts: {ex.Message}", Severity.Error);
+            _countsRefreshError = NotifyRefreshOutcome(_countsRefreshError, $"Failed to refresh counts: {ex.Message}");
         }
         finally
         {
@@ -311,22 +376,7 @@ public partial class EntitiesView
         StopLiveActive();
         _liveActive = true;
         _liveActiveCts = new CancellationTokenSource();
-        _ = Task.Run(async () =>
-        {
-            var token = _liveActiveCts.Token;
-            while (!token.IsCancellationRequested && !_disposed)
-            {
-                await RefreshActiveAsync(token);
-                if (_disposed || token.IsCancellationRequested) break;
-                try { await InvokeAsync(StateHasChanged); }
-                catch (Exception ex)
-                {
-                    Logger?.LogDebug(ex, "Failed to refresh UI during live active polling.");
-                }
-                try { await Task.Delay(LiveRefreshIntervalMs, token); }
-                catch (OperationCanceledException) { break; }
-            }
-        });
+        RunPollLoop(_liveActiveCts.Token, LiveRefreshIntervalMs, RefreshAndRenderActiveAsync);
     }
 
     private void StopLiveActive()
@@ -351,22 +401,7 @@ public partial class EntitiesView
         StopLiveDlq();
         _liveDlq = true;
         _liveDlqCts = new CancellationTokenSource();
-        _ = Task.Run(async () =>
-        {
-            var token = _liveDlqCts.Token;
-            while (!token.IsCancellationRequested && !_disposed)
-            {
-                await RefreshDlqAsync(token);
-                if (_disposed || token.IsCancellationRequested) break;
-                try { await InvokeAsync(StateHasChanged); }
-                catch (Exception ex)
-                {
-                    Logger?.LogDebug(ex, "Failed to refresh UI during live DLQ polling.");
-                }
-                try { await Task.Delay(LiveRefreshIntervalMs, token); }
-                catch (OperationCanceledException) { break; }
-            }
-        });
+        RunPollLoop(_liveDlqCts.Token, LiveRefreshIntervalMs, RefreshAndRenderDlqAsync);
     }
 
     private void StopLiveDlq()
@@ -390,16 +425,7 @@ public partial class EntitiesView
         if (string.IsNullOrEmpty(_selectedTreeValue) || _disposed) return;
         StopCountsPolling();
         _countsCts = new CancellationTokenSource();
-        _ = Task.Run(async () =>
-        {
-            var token = _countsCts!.Token;
-            while (!token.IsCancellationRequested && !_disposed)
-            {
-                await RefreshCountsAsync(token);
-                try { await Task.Delay(CountsRefreshIntervalMs, token); }
-                catch (OperationCanceledException) { break; }
-            }
-        });
+        RunPollLoop(_countsCts.Token, CountsRefreshIntervalMs, RefreshCountsAsync);
     }
 
     private void StopCountsPolling()
