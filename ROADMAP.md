@@ -13,29 +13,32 @@ Items are self-contained — each has the problem, why it matters, where to look
 
 ---
 
-## ✅ Recently shipped (v1.9.18)
+## ✅ Recently shipped (through v1.9.20)
 
-- DLQ & active message tables now reflect current state (authoritative peek snapshot).
-- Paging logic extracted to a unit-tested `MessageSnapshotPager` (14 tests).
-- CI/Docker pinned & aligned to .NET 10 (`global.json`); `Microsoft.Extensions.*` → 10.0.9;
-  OpenTelemetry bumped off vulnerable 1.15.0.
-- GitHub Actions bumped to Node-24 majors (silences the Node 20 deprecation).
+**v1.9.18** — DLQ & active message tables reflect current state (authoritative peek snapshot);
+paging logic extracted to a unit-tested `MessageSnapshotPager`. CI/Docker pinned & aligned to
+.NET 10 (`global.json`); `Microsoft.Extensions.*` → 10.0.9; OpenTelemetry off vulnerable 1.15.0.
+
+**v1.9.19** — GitHub Actions bumped to Node-24 majors (clears the Node 20 deprecation).
+
+**v1.9.20** — **B1** shared infra singletons (one client pool per namespace) + client-cache
+contract tests; **E1** container healthcheck; **E2** non-root image; **E3** compose `version:`
+cleanup; **E4** removed unused `DataProtection.Abstractions`.
 
 ---
 
 ## Suggested order
 
-Front-loaded with quick wins and high-value correctness; bigger structural/feature work later.
+Front-loaded with high-value correctness; bigger structural/feature work later.
+(B1 and the E-series are done — see Recently shipped above.)
 
-1. **B1** — share the infra singleton across interfaces (quick, removes 4× client pools)
-2. **E1–E4** — packaging/ops quick wins (compose, Dockerfile, dead refs)
-3. **A1** — fix session-enabled entities (correctness gap users can hit)
-4. **D1** — Service Bus emulator integration tests (would have caught the DLQ bug)
-5. **C2 / C3 / C4** — polling modernization, error-toast backoff, thread-safety
-6. **A2** — push snapshot paging into the infra layer (one receiver per snapshot)
-7. **C1** — decompose `EntitiesView`
-8. **B3** — connection-handle abstraction + Microsoft Entra ID auth (biggest feature unlock)
-9. **A3 / B2 / D2** — opportunistic polish
+1. **A1** — fix session-enabled entities (correctness gap users can hit)
+2. **D1** — Service Bus emulator integration tests (would have caught the DLQ bug)
+3. **C2 / C3 / C4** — polling modernization, error-toast backoff, thread-safety
+4. **A2** — push snapshot paging into the infra layer (one receiver per snapshot)
+5. **C1** — decompose `EntitiesView`
+6. **B3** — connection-handle abstraction + Microsoft Entra ID auth (biggest feature unlock)
+7. **A3 / B2 / D2** — opportunistic polish
 
 ---
 
