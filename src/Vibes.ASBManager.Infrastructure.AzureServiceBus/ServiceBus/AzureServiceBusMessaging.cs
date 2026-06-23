@@ -15,7 +15,9 @@ public sealed class AzureServiceBusMessaging(
     private readonly ConcurrentDictionary<string, ServiceBusClient> _clients = new(StringComparer.Ordinal);
     private readonly ILogger<AzureServiceBusMessaging> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
-    private ServiceBusClient GetClient(string connectionString)
+    // internal (not private) so tests can assert the per-connection-string client cache that
+    // keeps multiple open connections/tabs isolated.
+    internal ServiceBusClient GetClient(string connectionString)
         => _clients.GetOrAdd(connectionString, static cs => new ServiceBusClient(cs));
 
     private static ServiceBusMessage BuildMessage(
