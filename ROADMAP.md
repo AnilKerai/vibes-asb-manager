@@ -67,7 +67,7 @@ Front-loaded with quick wins and high-value correctness; bigger structural/featu
 
 ## B. Client & connection lifecycle
 
-- [ ] **B1 — Share the infra singleton across its interfaces `[S]`**
+- [x] **B1 — Share the infra singleton across its interfaces `[S]`** — ✅ shipped (one instance per concrete, forwarded to its interfaces; tests assert it)
   `AddAzureServiceBusInfrastructure` registers the same class under 4 interfaces as 4 separate
   singletons → four `AzureServiceBusMessaging` (and four `AzureServiceBusAdmin`) instances, each
   with its own client cache, so up to 4× the AMQP connections.
