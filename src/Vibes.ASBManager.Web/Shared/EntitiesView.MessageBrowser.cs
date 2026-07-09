@@ -68,10 +68,10 @@ public partial class EntitiesView
         _sendCts = null;
     }
 
-    private async Task OnActiveRowClick(TableRowClickEventArgs<MessagePreview> args)
+    private async Task OnActiveRowClick((MessagePreview Item, IReadOnlyList<MessagePreview> Visible) args)
     {
-        if (args?.Item is null) return;
-        await ShowMessageDetailsAsync(args.Item.SequenceNumber, isDeadLetter: false, _messages.ActiveMessages.ToList());
+        if (args.Item is null) return;
+        await ShowMessageDetailsAsync(args.Item.SequenceNumber, isDeadLetter: false, args.Visible);
     }
 
     private async Task OnDlqRowClick((MessagePreview Item, IReadOnlyList<MessagePreview> Visible) args)
