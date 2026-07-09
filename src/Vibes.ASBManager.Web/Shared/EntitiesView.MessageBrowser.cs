@@ -74,10 +74,10 @@ public partial class EntitiesView
         await ShowMessageDetailsAsync(args.Item.SequenceNumber, isDeadLetter: false, _messages.ActiveMessages.ToList());
     }
 
-    private async Task OnDlqRowClick(TableRowClickEventArgs<MessagePreview> args)
+    private async Task OnDlqRowClick((MessagePreview Item, IReadOnlyList<MessagePreview> Visible) args)
     {
-        if (args?.Item is null) return;
-        await ShowMessageDetailsAsync(args.Item.SequenceNumber, isDeadLetter: true, _messages.DlqMessages.ToList());
+        if (args.Item is null) return;
+        await ShowMessageDetailsAsync(args.Item.SequenceNumber, isDeadLetter: true, args.Visible);
     }
 
     // Peek a single message's full details for the current tree selection. Shared by the initial
