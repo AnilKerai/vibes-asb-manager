@@ -12,14 +12,14 @@
             <MudTh>Seq</MudTh>
             <MudTh>Dead-lettered</MudTh>
             <MudTh>MessageId</MudTh>
-            <MudTh>Subject</MudTh>
+            <MudTh>DLQ Reason</MudTh>
             <MudTh>CorrelationId</MudTh>
         </HeaderContent>
         <RowTemplate>
             <MudTd DataLabel="Seq">@context.SequenceNumber</MudTd>
             <MudTd DataLabel="Dead-lettered">@context.EnqueuedTime.LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss")</MudTd>
             <MudTd DataLabel="MessageId">@context.MessageId</MudTd>
-            <MudTd DataLabel="Subject">@context.Subject</MudTd>
+            <MudTd DataLabel="DLQ Reason">@context.DeadLetterReason</MudTd>
             <MudTd DataLabel="CorrelationId">@context.CorrelationId</MudTd>
         </RowTemplate>
         <PagerContent>

@@ -136,7 +136,8 @@ public sealed class AzureServiceBusMessaging(
         EnqueuedTime = message.EnqueuedTime,
         MessageId = message.MessageId,
         Subject = message.Subject,
-        CorrelationId = message.CorrelationId
+        CorrelationId = message.CorrelationId,
+        DeadLetterReason = message.DeadLetterReason
     };
 
     // Pages a snapshot behind a SINGLE receiver: the shared pager advances the peek anchor and we

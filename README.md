@@ -17,6 +17,7 @@ With that in mind, feel free to suggest / make improvements - i'm not particular
 - Browse queues, topics and subscriptions in a simple tree.
 - Peek active and dead-letter messages with paging and optional live refresh.
 - View message details and resubmit from DLQ; optionally remove the original from DLQ.
+- Step through messages with the arrow keys and close any dialog with Esc.
 - Send to queues or topics with custom properties, content type, and scheduling; send multiple with an interval.
 - Manage subscriptions and rules (SQL and correlation) with create/delete.
 - Edit entity defaults (TTL and dead-letter on expiration) for queues, topics, subscriptions.
@@ -39,7 +40,7 @@ Navigate queues, topics, and subscriptions with an expandable tree and a clear s
 
 ### Queue management + message visibility
 
-Edit entity settings, inspect active messages, and review DLQ rows in one place.
+Edit entity settings, inspect active messages, and review DLQ rows (with dead-letter reason) in one place.
 
 ![Queue view](docs/features-04-queue.png)
 
