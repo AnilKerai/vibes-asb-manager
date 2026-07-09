@@ -71,33 +71,41 @@ public partial class EntitiesView
     private async Task OnActiveRowClick(TableRowClickEventArgs<MessagePreview> args)
     {
         if (args?.Item is null) return;
-        await ShowMessageDetailsAsync(args.Item.SequenceNumber, isDeadLetter: false);
+        await ShowMessageDetailsAsync(args.Item.SequenceNumber, isDeadLetter: false, _messages.ActiveMessages.ToList());
     }
 
     private async Task OnDlqRowClick(TableRowClickEventArgs<MessagePreview> args)
     {
         if (args?.Item is null) return;
-        await ShowMessageDetailsAsync(args.Item.SequenceNumber, isDeadLetter: true);
+        await ShowMessageDetailsAsync(args.Item.SequenceNumber, isDeadLetter: true, _messages.DlqMessages.ToList());
     }
 
-    private async Task ShowMessageDetailsAsync(long sequenceNumber, bool isDeadLetter)
+    // Peek a single message's full details for the current tree selection. Shared by the initial
+    // open and by prev/next navigation inside the dialog.
+    private Task<MessageDetails?> PeekDetailsAsync(long sequenceNumber, bool isDeadLetter)
+    {
+        if (string.IsNullOrWhiteSpace(_connectionString)) return Task.FromResult<MessageDetails?>(null);
+        if (TryGetQueue(out var q))
+        {
+            return isDeadLetter
+                ? MessageBrowser.PeekQueueDeadLetterMessageAsync(_connectionString!, q, sequenceNumber)
+                : MessageBrowser.PeekQueueMessageAsync(_connectionString!, q, sequenceNumber);
+        }
+        if (TryGetSubscription(out var t, out var s))
+        {
+            return isDeadLetter
+                ? MessageBrowser.PeekSubscriptionDeadLetterMessageAsync(_connectionString!, t, s, sequenceNumber)
+                : MessageBrowser.PeekSubscriptionMessageAsync(_connectionString!, t, s, sequenceNumber);
+        }
+        return Task.FromResult<MessageDetails?>(null);
+    }
+
+    private async Task ShowMessageDetailsAsync(long sequenceNumber, bool isDeadLetter, IReadOnlyList<MessagePreview> previews)
     {
         if (string.IsNullOrWhiteSpace(_connectionString)) return;
         try
         {
-            MessageDetails? details = null;
-            if (TryGetQueue(out var q))
-            {
-                details = isDeadLetter
-                    ? await MessageBrowser.PeekQueueDeadLetterMessageAsync(_connectionString!, q, sequenceNumber)
-                    : await MessageBrowser.PeekQueueMessageAsync(_connectionString!, q, sequenceNumber);
-            }
-            else if (TryGetSubscription(out var t, out var s))
-            {
-                details = isDeadLetter
-                    ? await MessageBrowser.PeekSubscriptionDeadLetterMessageAsync(_connectionString!, t, s, sequenceNumber)
-                    : await MessageBrowser.PeekSubscriptionMessageAsync(_connectionString!, t, s, sequenceNumber);
-            }
+            var details = await PeekDetailsAsync(sequenceNumber, isDeadLetter);
 
             if (details is null)
             {
@@ -109,7 +117,9 @@ public partial class EntitiesView
             {
                 ["Details"] = details,
                 ["IsDeadLetter"] = isDeadLetter,
-                ["ConnectionString"] = _connectionString!
+                ["ConnectionString"] = _connectionString!,
+                ["Previews"] = previews,
+                ["LoadDetails"] = (Func<long, Task<MessageDetails?>>)(seq => PeekDetailsAsync(seq, isDeadLetter))
             };
             if (TryGetQueue(out var qq))
             {

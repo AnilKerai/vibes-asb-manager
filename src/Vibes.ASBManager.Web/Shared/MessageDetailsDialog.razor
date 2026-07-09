@@ -1,4 +1,5 @@
 @inherits ComponentBase
+@implements IAsyncDisposable
 @using System.Text.Json
 @using System.Xml.Linq
 @using Vibes.ASBManager.Application.Interfaces.Messaging
@@ -6,7 +7,18 @@
 
 <MudDialog>
     <DialogContent>
-        <MudText Typo="Typo.h6">Message @Details.SequenceNumber</MudText>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+            <MudText Typo="Typo.h6">Message @Details.SequenceNumber</MudText>
+            @if (HasNav)
+            {
+                <MudSpacer />
+                <MudIconButton Icon="@Icons.Material.Filled.KeyboardArrowUp" Size="Size.Small" title="Previous (↑)"
+                               Disabled="@(_navigating || CurrentIndex <= 0)" OnClick="@(() => NavigateAsync(-1))" />
+                <MudText Typo="Typo.caption">@(CurrentIndex + 1) / @Previews!.Count</MudText>
+                <MudIconButton Icon="@Icons.Material.Filled.KeyboardArrowDown" Size="Size.Small" title="Next (↓)"
+                               Disabled="@(_navigating || CurrentIndex >= Previews!.Count - 1)" OnClick="@(() => NavigateAsync(1))" />
+            }
+        </MudStack>
         <MudText Typo="Typo.caption" Class="mb-2">@(IsDeadLetter ? "Dead-lettered" : "Active")</MudText>
 
         <MudGrid Class="mb-2">
@@ -106,6 +118,11 @@
     [Parameter] public string? TopicName { get; set; }
     [Parameter] public string? SubscriptionName { get; set; }
 
+    // Ordered snapshot of the list this message was opened from, and a fetcher to load a
+    // sibling's details by sequence number — together they power prev/next (buttons + arrow keys).
+    [Parameter] public IReadOnlyList<MessagePreview>? Previews { get; set; }
+    [Parameter] public Func<long, Task<MessageDetails?>>? LoadDetails { get; set; }
+
     [Inject] private IMessageSender MessageSender { get; set; } = default!;
     [Inject] private IDeadLetterMaintenance DeadLetterMaintenance { get; set; } = default!;
     [Inject] private ISnackbar Snackbar { get; set; } = default!;
@@ -122,6 +139,22 @@
     private string? _messageIdEdit;
     private bool _removeOriginal;
     private bool _generateNewMessageId;
+    private bool _navigating;
+    private DotNetObjectReference<MessageDetailsDialog>? _selfRef;
+    private IJSObjectReference? _keyNav;
+
+    private bool HasNav => Previews is { Count: > 1 } && LoadDetails is not null;
+
+    private int CurrentIndex
+    {
+        get
+        {
+            if (Previews is null) return -1;
+            for (var i = 0; i < Previews.Count; i++)
+                if (Previews[i].SequenceNumber == Details.SequenceNumber) return i;
+            return -1;
+        }
+    }
 
     private string FormatDate(DateTimeOffset dto) => dto.LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss");
 
@@ -132,16 +165,89 @@
         if (!_initialized && Details is not null)
         {
             _initialized = true;
-            _bodyEdit = Details.Body;
-            _subjectEdit = Details.Subject;
-            _correlationIdEdit = Details.CorrelationId;
-            _contentTypeEdit = Details.ContentType;
-            _messageIdEdit = Details.MessageId;
-            _propertyDict = Details.ApplicationProperties?.ToDictionary(kv => kv.Key, kv => kv.Value?.ToString() ?? string.Empty)
-                           ?? new Dictionary<string, string>(StringComparer.Ordinal);
-            TryFormatBodyForDisplay();
-            BuildSystemProps();
+            InitFromDetails();
         }
+    }
+
+    private void InitFromDetails()
+    {
+        _bodyEdit = Details.Body;
+        _subjectEdit = Details.Subject;
+        _correlationIdEdit = Details.CorrelationId;
+        _contentTypeEdit = Details.ContentType;
+        _messageIdEdit = Details.MessageId;
+        _propertyDict = Details.ApplicationProperties?.ToDictionary(kv => kv.Key, kv => kv.Value?.ToString() ?? string.Empty)
+                       ?? new Dictionary<string, string>(StringComparer.Ordinal);
+        TryFormatBodyForDisplay();
+        BuildSystemProps();
+    }
+
+    // direction: -1 = previous, +1 = next. Swaps the dialog to the sibling message in place.
+    private async Task NavigateAsync(int direction)
+    {
+        if (!HasNav || _navigating) return;
+        var idx = CurrentIndex;
+        if (idx < 0) return;
+        var next = idx + direction;
+        if (next < 0 || next >= Previews!.Count) return;
+        try
+        {
+            _navigating = true;
+            var details = await LoadDetails!(Previews[next].SequenceNumber);
+            if (details is null)
+            {
+                Snackbar.Add("Message not found. It may have moved or expired.", Severity.Info);
+                return;
+            }
+            Details = details;
+            InitFromDetails();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to load message: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _navigating = false;
+        }
+    }
+
+    [JSInvokable]
+    public Task Navigate(int direction)
+        => InvokeAsync(async () => { await NavigateAsync(direction); StateHasChanged(); });
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && HasNav)
+        {
+            try
+            {
+                _selfRef = DotNetObjectReference.Create(this);
+                _keyNav = await Js.InvokeAsync<IJSObjectReference>("import", "./keynav.js");
+                await _keyNav.InvokeVoidAsync("register", _selfRef);
+            }
+            catch (Exception ex)
+            {
+                Logger?.LogDebug(ex, "Failed to register message key navigation.");
+            }
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_keyNav is not null)
+            {
+                await _keyNav.InvokeVoidAsync("unregister");
+                await _keyNav.DisposeAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger?.LogDebug(ex, "Failed to dispose message key navigation.");
+        }
+        _selfRef?.Dispose();
     }
 
     private string GetTargetLabel()

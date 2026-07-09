@@ -7,4 +7,5 @@ public sealed class MessagePreview
     public string? MessageId { get; init; }
     public string? Subject { get; init; }
     public string? CorrelationId { get; init; }
+    public string? DeadLetterReason { get; init; }
 }
