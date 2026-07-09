@@ -22,5 +22,5 @@
     [Parameter] public EventCallback OnActiveRefresh { get; set; }
     [Parameter] public EventCallback OnDlqRefresh { get; set; }
     [Parameter] public EventCallback<TableRowClickEventArgs<MessagePreview>> OnActiveRowClick { get; set; }
-    [Parameter] public EventCallback<TableRowClickEventArgs<MessagePreview>> OnDlqRowClick { get; set; }
+    [Parameter] public EventCallback<(MessagePreview Item, IReadOnlyList<MessagePreview> Visible)> OnDlqRowClick { get; set; }
 }

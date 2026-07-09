@@ -58,6 +58,12 @@ public sealed class PeekPagingTests(EmulatorFixture fixture)
         Assert.Equal(24, snapshot.Count);
         Assert.Equal(24, snapshot.Select(m => m.SequenceNumber).Distinct().Count());
 
+        // The preview must carry body + dead-letter reason through a real peek — that's what DLQ
+        // search filters on. Bodies were sent as "msg-{i}"; the reason was set to "test".
+        Assert.All(snapshot, m => Assert.False(string.IsNullOrEmpty(m.Body)));
+        Assert.All(snapshot, m => Assert.Equal("test", m.DeadLetterReason));
+        Assert.Contains(snapshot, m => m.Body == "msg-0");
+
         await messaging.PurgeQueueDeadLetterAsync(EmulatorFixture.ConnectionString, PlainQueue, maxMessages: 1000);
     }
 

@@ -137,8 +137,18 @@ public sealed class AzureServiceBusMessaging(
         MessageId = message.MessageId,
         Subject = message.Subject,
         CorrelationId = message.CorrelationId,
-        DeadLetterReason = message.DeadLetterReason
+        DeadLetterReason = message.DeadLetterReason,
+        Body = TryReadBody(message)
     };
+
+    // DLQ messages can carry non-Data AMQP bodies (Value/Sequence) whose .Body getter throws — and a
+    // malformed body is often *why* a message dead-lettered. One bad message must not sink the whole
+    // snapshot. ponytail: swallow — the body is search-only in the preview; details view reads it fresh.
+    private static string? TryReadBody(ServiceBusReceivedMessage message)
+    {
+        try { return message.Body?.ToString(); }
+        catch { return null; }
+    }
 
     // Pages a snapshot behind a SINGLE receiver: the shared pager advances the peek anchor and we
     // pass it straight to PeekMessagesAsync on the same receiver, so a 500-message refresh issues

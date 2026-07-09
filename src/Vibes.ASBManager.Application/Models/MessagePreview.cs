@@ -8,4 +8,5 @@ public sealed class MessagePreview
     public string? Subject { get; init; }
     public string? CorrelationId { get; init; }
     public string? DeadLetterReason { get; init; }
+    public string? Body { get; init; }
 }

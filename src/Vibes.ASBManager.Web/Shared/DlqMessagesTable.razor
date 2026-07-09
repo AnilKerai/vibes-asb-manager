@@ -1,13 +1,25 @@
+@using Vibes.ASBManager.Application.Messaging
+
 <MudPaper Class="pa-3 mt-3" Elevation="1">
     <div class="d-flex align-center mb-2" style="gap:8px;">
-        <MudText Typo="Typo.h6">Dead-letter Messages @((Count.HasValue ? $"({Count.Value})" : string.Empty))</MudText>
+        <MudText Typo="Typo.h6">Dead-letter Messages @HeaderCount</MudText>
         <MudSpacer />
+        <MudTextField T="string" @bind-Value="_search" Immediate="true" Clearable="true"
+                      Placeholder="Search id, subject, reason, body…"
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                      Margin="Margin.Dense" Class="mt-0" Style="max-width:340px;" />
         <MudButton Variant="Variant.Outlined" Disabled="@(!CanRefresh)" OnClick="@OnRefresh">
             <MudIcon Icon="@Icons.Material.Filled.Refresh" />
             <span class="ms-1">Refresh</span>
         </MudButton>
     </div>
-    <MudTable T="MessagePreview" Items="Items" Dense="true" Hover="true" Elevation="0" OnRowClick="@OnRowClick">
+    @if (ShowScopeHint)
+    {
+        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-1 d-block">
+            Searching the @_loadedCount loaded messages (of @Count). Refresh or narrow the selection to search more.
+        </MudText>
+    }
+    <MudTable T="MessagePreview" Items="FilteredItems" Dense="true" Hover="true" Elevation="0" OnRowClick="@HandleRowClick">
         <HeaderContent>
             <MudTh>Seq</MudTh>
             <MudTh>Dead-lettered</MudTh>
@@ -22,6 +34,9 @@
             <MudTd DataLabel="DLQ Reason">@context.DeadLetterReason</MudTd>
             <MudTd DataLabel="CorrelationId">@context.CorrelationId</MudTd>
         </RowTemplate>
+        <NoRecordsContent>
+            <MudText Typo="Typo.body2">@NoRecordsText</MudText>
+        </NoRecordsContent>
         <PagerContent>
             <MudTablePager PageSizeOptions="new int[] { 10, 15, 25, 50 }" />
         </PagerContent>
@@ -33,6 +48,34 @@
     [Parameter] public bool CanRefresh { get; set; }
     [Parameter] public EventCallback OnRefresh { get; set; }
 
-    [Parameter] public EventCallback<TableRowClickEventArgs<MessagePreview>> OnRowClick { get; set; }
+    // Carries the clicked message plus the currently-visible (filtered) set, so the details dialog can
+    // navigate prev/next within the search results rather than the whole loaded snapshot.
+    [Parameter] public EventCallback<(MessagePreview Item, IReadOnlyList<MessagePreview> Visible)> OnRowClick { get; set; }
     [Parameter] public long? Count { get; set; }
+
+    private string? _search;
+
+    private int _loadedCount => Items?.Count ?? 0;
+
+    private IReadOnlyList<MessagePreview> FilteredItems
+        => string.IsNullOrWhiteSpace(_search) || Items is null
+            ? Items ?? Array.Empty<MessagePreview>()
+            : Items.Where(m => MessageSearch.Matches(m, _search)).ToList();
+
+    private string HeaderCount
+        => !string.IsNullOrWhiteSpace(_search)
+            ? $"(showing {FilteredItems.Count} of {_loadedCount})"
+            : Count.HasValue ? $"({Count.Value})" : string.Empty;
+
+    private bool ShowScopeHint
+        => !string.IsNullOrWhiteSpace(_search) && Count.HasValue && _loadedCount < Count.Value;
+
+    private string NoRecordsText
+        => string.IsNullOrWhiteSpace(_search) ? "No dead-letter messages." : "No messages match your search.";
+
+    private async Task HandleRowClick(TableRowClickEventArgs<MessagePreview> args)
+    {
+        if (args?.Item is null) return;
+        await OnRowClick.InvokeAsync((args.Item, FilteredItems));
+    }
 }
